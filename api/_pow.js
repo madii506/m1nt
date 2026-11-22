@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 
 export const GRADES = [   // highest first
+  { id: 'core', bits: 28, xp: 8000, name: 'hSOL core' },
   { id: 'crystal', bits: 25, xp: 1200, name: 'hSOL crystal' },
   { id: 'gem', bits: 22, xp: 160, name: 'cut gem' },
   { id: 'ore', bits: 20, xp: 40, name: 'hSOL ore' },
