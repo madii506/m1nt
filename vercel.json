@@ -1,14 +1,48 @@
 {
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/api/:op(state|wallet|holders|plan|ledger|quote|swap|status|verify|submit|board|live)", "destination": "/api/m1nt?op=:op" }
+    {
+      "source": "/api/:op(state|wallet|holders|plan|ledger|quote|swap|status|verify|submit|board|live)",
+      "destination": "/api/m1nt?op=:op"
+    }
   ],
   "headers": [
-    { "source": "/assets/(.*)", "headers": [{ "key": "cache-control", "value": "public, max-age=600, stale-while-revalidate=86400" }] },
-    { "source": "/(.*)", "headers": [
-      { "key": "x-content-type-options", "value": "nosniff" },
-      { "key": "referrer-policy", "value": "no-referrer" },
-      { "key": "permissions-policy", "value": "camera=(), microphone=(), geolocation=()" }
-    ] }
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "cache-control",
+          "value": "public, max-age=600, stale-while-revalidate=86400"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "x-content-type-options",
+          "value": "nosniff"
+        },
+        {
+          "key": "referrer-policy",
+          "value": "no-referrer"
+        },
+        {
+          "key": "permissions-policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
+      ]
+    }
+  ],
+  "functions": {
+    "api/engine.js": {
+      "maxDuration": 300
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/engine",
+      "schedule": "0 * * * *"
+    }
   ]
 }
