@@ -36,6 +36,8 @@ const HANDS = [
   { n: 4, name: 'A mining crew', lv: 18, cost: { gem: 3 } },
   { n: 6, name: 'The night shift', lv: 28, cost: { gem: 8, crystal: 1 } },
 ];
+const RANKS = [[1, 'Pebble'], [5, 'Prospector'], [10, 'Digger'], [20, 'Tunneler'], [30, 'Foreman'], [45, 'Vein master'], [60, 'Deep delver'], [80, 'hSOL baron'], [99, 'Mine legend']];
+const rank = lv => RANKS.filter(r => lv >= r[0]).pop()[1];
 const SMELT = [['dust', 10, 'ore', 'Smelt'], ['ore', 8, 'gem', 'Cut'], ['gem', 10, 'crystal', 'Fuse']];
 const MAXH = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
 const message = (rock, seed, nonce) => `m1nt|${rock}|${seed}|${nonce}`;
@@ -44,13 +46,28 @@ const message = (rock, seed, nonce) => `m1nt|${rock}|${seed}|${nonce}`;
 const KEY = 'm1nt:save';
 const zero = () => ({ core: 0, crystal: 0, gem: 0, ore: 0, dust: 0 });
 const blank = () => ({ v: 2, xp: 0, swings: 0, hashes: 0, fails: 0, finds: zero(), best: null, inv: [], bank: zero(), proofs: [], sent: {}, name: '', seed: '', nonce: 0,
-  auto: true, fx: !reduced, autoBank: false, autoSubmit: false, up: { head: 0, hands: 0 }, cpu: 0, qdone: {}, qp: 0, pet: 0, flags: {}, mineMs: 0, banked: 0, fullPacks: 0, bitsHist: {}, streak: { day: '', n: 0 }, since: Date.now() });
+  auto: true, fx: !reduced, autoBank: false, autoSubmit: false, up: { head: 0, hands: 0 }, cpu: 0, qdone: {}, qp: 0, pet: 0, flags: {}, mineMs: 0, banked: 0, fullPacks: 0, bitsHist: {}, streak: { day: '', n: 0 }, since: Date.now(), cid: Math.random().toString(36).slice(2, 14), sound: false, vol: .5, daily: null, feedQ: [] });
 let S = blank(); try { S = { ...blank(), ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch {}
-{ const B = blank(); for (const k of ['finds', 'bank', 'up', 'flags', 'streak', 'bitsHist', 'qdone']) S[k] = { ...B[k], ...(S[k] || {}) }; }
+{ const B = blank(); for (const k of ['finds', 'bank', 'up', 'flags', 'streak', 'bitsHist', 'qdone']) S[k] = { ...B[k], ...(S[k] || {}) }; if (!S.cid) S.cid = B.cid; if (!Array.isArray(S.feedQ)) S.feedQ = []; }
 const slug = n => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 12);
 function newSeed() { S.seed = `${slug(S.name) || 'anon'}-${Math.random().toString(36).slice(2, 8)}`; if (!S.nonce) S.nonce = irnd(1, 9e8); }
 if (!S.seed) newSeed();
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
+let AC = null;
+function sfx(kind, x) {   // every sound is synthesised here; nothing plays until you switch sound on in Options
+  if (!S.sound) return;
+  try {
+    AC ||= new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume();
+    const t = AC.currentTime, out = AC.createGain(); out.gain.value = S.vol * .5; out.connect(AC.destination);
+    const tone = (f, at, dur, type = 'square', gain = .1) => { const o = AC.createOscillator(), v = AC.createGain(); o.type = type; o.frequency.value = f; v.gain.setValueAtTime(0, t + at); v.gain.linearRampToValueAtTime(gain, t + at + .005); v.gain.exponentialRampToValueAtTime(.0001, t + at + dur); o.connect(v); v.connect(out); o.start(t + at); o.stop(t + at + dur + .02); };
+    if (kind === 'hit') { const n = AC.createBufferSource(), b = AC.createBuffer(1, Math.floor(AC.sampleRate * .05), AC.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length); n.buffer = b; const f = AC.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1500 + Math.random() * 600; f.Q.value = 3; n.connect(f); f.connect(out); n.start(t); }
+    else if (kind === 'find') ({ dust: [880], ore: [988, 1319], gem: [1047, 1319, 1568], crystal: [1047, 1319, 1568, 2093], core: [784, 1047, 1319, 1568, 2093, 2637] }[x] || [880]).forEach((f, i) => tone(f, i * .07, .16, 'square', .06));
+    else if (kind === 'level') [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, i * .09, .22, 'square', .07));
+    else if (kind === 'bank') { tone(110, 0, .12, 'triangle', .3); tone(82, .06, .14, 'triangle', .25); }
+    else if (kind === 'quest') [784, 988, 1175].forEach((f, i) => tone(f, i * .08, .2, 'triangle', .12));
+    else if (kind === 'rush') [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, i * .1, .3, 'sawtooth', .04));
+  } catch {}
+}
 function keepProofs() { if (S.proofs.length > 400) { S.proofs.sort((a, b) => b.b - a.b || b.t - a.t); S.proofs.length = 400; } }
 { const d = new Date().toISOString().slice(0, 10), y = new Date(Date.now() - 864e5).toISOString().slice(0, 10); if (S.streak.day !== d) { S.streak = { day: d, n: S.streak.day === y ? S.streak.n + 1 : 1 }; save(); } }
 const sess = { t0: Date.now(), xp0: S.xp, hashes0: S.hashes, finds0: 0, mine0: 0, mined: 0 };
@@ -92,6 +109,33 @@ const HOME = [268, 147];
 const me = { x: HOME[0], y: HOME[1], z: 9, flip: false, moving: false };
 const pet = { x: HOME[0] + 16, y: HOME[1] };
 const spotFor = r => [r.full.ox - 3, Math.round(r.full.base[1] + 3)];
+function tint(img, hue) {   // repaint the purple shirt (and pick) in another hue, keeping every shade
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height), a = d.data;
+  for (let i = 0; i < a.length; i += 4) {
+    if (!a[i + 3]) continue; const r = a[i] / 255, gg = a[i + 1] / 255, b = a[i + 2] / 255, mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), dl = mx - mn, l = (mx + mn) / 2;
+    if (dl < .12) continue; const sat = dl / (1 - Math.abs(2 * l - 1) || 1); let h = mx === r ? ((gg - b) / dl) % 6 : mx === gg ? (b - r) / dl + 2 : (r - gg) / dl + 4; h *= 60; if (h < 0) h += 360;
+    if (h < 245 || h > 300 || sat < .25) continue;
+    const C = (1 - Math.abs(2 * l - 1)) * sat, X = C * (1 - Math.abs((hue / 60) % 2 - 1)), m = l - C / 2, [rr, g2, bb] = [[C, X, 0], [X, C, 0], [0, C, X], [0, X, C], [X, 0, C], [C, 0, X]][Math.floor(hue / 60) % 6];
+    a[i] = (rr + m) * 255; a[i + 1] = (g2 + m) * 255; a[i + 2] = (bb + m) * 255;
+  }
+  x.putImageData(d, 0, 0); return c;
+}
+const TINTS = [160, 22, 205, 48, 330].map(h => tint(minerImg, h));
+const nameHue = n => { let h = 0; for (const ch of String(n)) h = (h * 33 + ch.charCodeAt(0)) >>> 0; return h % TINTS.length; };
+let LIVE = null, spots = [];
+function otherSpots() {
+  if (!LIVE?.live) return [];
+  const per = {}; return LIVE.online.filter(o => !o.self && o.rock >= 0 && o.rock <= 4).slice(0, 6).map((o, i) => {
+    const r = rocks[o.rock], k = per[o.rock] = (per[o.rock] ?? -1) + 1;
+    return { ...o, x: r.full.ox + r.full.w + 1 + k * 12, y: Math.round(r.full.base[1] + 3 + k * 2), z: r.z + .04 + k * .001, ph: i * .23, img: TINTS[nameHue(o.name)] };
+  });
+}
+function drawOther(o, t) {
+  const k = ((t / 1000 + o.ph) % .62) / .62, f = MF[k < .38 ? 0 : k < .55 ? 1 : 2], x = Math.round(o.x), y = o.y;
+  g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x - 8, y - 1, 16, 2);
+  g.save(); g.translate(x, 0); g.scale(-1, 1); g.drawImage(o.img, f.sx, f.sy, f.w, f.h, Math.round(f.rx), y + Math.round(f.ry), f.w, f.h); g.restore();
+}
 function drawMiner(t) {
   let fi = 2, bob = 0;
   if (me.moving) { fi = 2; bob = Math.floor(t / 140) % 2; }
@@ -147,14 +191,16 @@ function draw(t, dt) {
   g.drawImage(caveImg, 0, 0);
   ART.cave.torches.forEach(([x, y], i) => drawFlame(g, Math.round(x) - 4, Math.round(y) - 10, (Math.floor(t / 130) + i) % 3));
   const now = Date.now(); stepMiner(dt); if (active !== null && !me.moving) chopPhase += dt;
-  let minerDrawn = false;
+  spots = otherSpots();
+  const actors = [{ z: me.z, f: () => { drawPet(t); drawMiner(t); } }, ...spots.map(o => ({ z: o.z, f: () => drawOther(o, t) }))].sort((a, b) => a.z - b.z); let ai = 0;
   for (const r of byDepth) {
-    if (!minerDrawn && me.z < r.z) { drawPet(t); drawMiner(t); minerDrawn = true; }
+    while (ai < actors.length && actors[ai].z < r.z) actors[ai++].f();
     if (r.respawn && now > r.respawn) { r.respawn = 0; r.left = irnd(3, 6); burst(r, 10); }
     const f = r.respawn ? r.empty : r.full; g.drawImage(rocksImg, f.sx, 0, f.w, f.h, f.ox, f.oy, f.w, f.h);
   }
-  if (!minerDrawn) { drawPet(t); drawMiner(t); }
-  ambient(t, dt);
+  while (ai < actors.length) actors[ai++].f();
+  for (let i = carts.length - 1; i >= 0; i--) { const c = carts[i]; c.x += 62 * dt; drawCart(c.x); if (c.x > 340 + X0) carts.splice(i, 1); }
+  ambient(t, dt); if (performance.now() < matrixUntil) drawMatrix(dt);
   if (S.fx && Math.random() < dt * 5) { const r = rocks[irnd(0, 4)]; if (!r.respawn && r.full.tips.length) { const p = r.full.tips[irnd(0, r.full.tips.length - 1)]; sparks.push({ x: p[0], y: p[1], t: 0 }); } }
   // the target: corner ticks round the rock you are working, the one under the cursor and a rich vein
   const ticks = (r, col, o = 2) => { const f = r.respawn ? r.empty : r.full, x0 = f.ox - o, y0 = f.oy - o, x1 = f.ox + f.w + o - 1, y1 = f.oy + f.h + o - 1; g.fillStyle = col; for (const [x, y, dx, dy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) { g.fillRect(Math.min(x, x + dx * 4), y, 5, 1); g.fillRect(x, Math.min(y, y + dy * 4), 1, 5); } };
@@ -163,7 +209,7 @@ function draw(t, dt) {
   if (active !== null) {
     const r = rocks[active], k = (chopPhase % .62) / .62; ticks(r, '#ffff00');
     if (!me.moving && k >= .55 && !r._hit) {   // the pick lands: chips fly off the rock face
-      r._hit = true; const hx = r.full.ox + 5, hy = Math.round(me.y) - 12;
+      r._hit = true; sfx('hit'); const hx = r.full.ox + 5, hy = Math.round(me.y) - 12;
       for (let i = 0; i < 6; i++) chips.push({ x: hx, y: hy, vx: rnd(-10, 34), vy: rnd(-46, -12), l: rnd(.35, .65), c: i % 3 ? '#8b8178' : '#c7a2ff' });
     }
     if (k < .5) r._hit = false;
@@ -172,6 +218,22 @@ function draw(t, dt) {
   for (let i = chips.length - 1; i >= 0; i--) { const c = chips[i]; c.l -= dt; c.vy += 150 * dt; c.x += c.vx * dt; c.y += c.vy * dt; g.fillStyle = c.c; g.fillRect(Math.round(c.x), Math.round(c.y), 1, 1); if (c.l <= 0) chips.splice(i, 1); }
   for (let i = fireworks.length - 1; i >= 0; i--) { const p = fireworks[i]; p.l -= dt; p.vy += 40 * dt; p.x += p.vx * dt; p.y += p.vy * dt; g.fillStyle = p.c; g.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); if (p.l <= 0) fireworks.splice(i, 1); }
   if (busy) { const k = Math.min(1, (performance.now() - swingStart) / Math.max(SWING_MS, lastSwingMs || SWING_MS)); $('#swingBar i').style.width = (k * 100).toFixed(1) + '%'; }
+}
+// a mine cart rolls the banked ore out along the rails
+const carts = [];
+function drawCart(cx) {
+  const x = Math.round(cx), y = 166;
+  g.fillStyle = '#000'; g.fillRect(x - 1, y - 13, 26, 12);
+  g.fillStyle = '#6b4a2a'; g.fillRect(x, y - 12, 24, 10); g.fillStyle = '#8a6238'; g.fillRect(x, y - 12, 24, 2); g.fillStyle = '#4a3220'; g.fillRect(x + 11, y - 10, 2, 8); g.fillRect(x, y - 4, 24, 1);
+  [['#9b4dff', 2, 15, 4], ['#19f0a0', 7, 16, 4], ['#c7a2ff', 12, 15, 3], ['#9b4dff', 16, 16, 4], ['#7f868d', 5, 14, 3]].forEach(([c, dx, dy, w]) => { g.fillStyle = c; g.fillRect(x + dx, y - dy, w, 3); });
+  g.fillStyle = '#1a1412'; g.fillRect(x + 3, y - 2, 4, 4); g.fillRect(x + 17, y - 2, 4, 4); g.fillStyle = '#9aa2aa'; g.fillRect(x + 4, y - 1, 1, 1); g.fillRect(x + 18, y - 1, 1, 1);
+}
+// matrix: a few seconds of falling hex over the cave
+let matrixUntil = 0; const mcols = [];
+function drawMatrix(dt) {
+  if (!mcols.length) for (let i = 0; i < 40; i++) mcols.push({ x: rnd(-X0, 320 + X0), y: rnd(-200, 0), v: rnd(40, 110) });
+  g.font = '7px VT, monospace';
+  for (const c of mcols) { c.y += c.v * dt; if (c.y > 210) { c.y = rnd(-40, 0); c.x = rnd(-X0, 320 + X0); } for (let k = 0; k < 6; k++) { g.fillStyle = k ? `rgba(25,240,160,${.7 - k * .11})` : '#c8ffe8'; g.fillText('0123456789abcdef'[(Math.random() * 16) | 0], Math.round(c.x), Math.round(c.y - k * 7)); } }
 }
 function burst(r, n = 6, col) { const f = r.full; for (let i = 0; i < n; i++) sparks.push({ x: f.ox + rnd(4, f.w - 4), y: f.oy + rnd(2, f.h * .6), t: -rnd(0, .3), c: col }); }
 let lastT = 0, acc = 0;
@@ -221,26 +283,31 @@ function swing() {
   for (let i = 0; i < n; i++) getWorker(i).postMessage({ id, rock: active, seed: S.seed, from: from + i * per, count: per });
   $('#swingBar').classList.add('on'); hoverLine();
 }
+const benchWait = {}; let lastParts = [];
 function onPart(d) {
+  if (d.id < 0) { const w = benchWait[d.id]; if (w) { w.got.push(d); if (w.got.length === w.need) { delete benchWait[d.id]; w.done(w.got); } } return; }
   if (!parts || d.id !== parts.id) return; parts.got.push(d);
   if (parts.got.length < parts.need) return;
   const best = parts.got.reduce((a, b) => b.bits > a.bits ? b : a), count = parts.got.reduce((s, x) => s + x.count, 0), ms = Math.max(...parts.got.map(x => x.ms));
-  S.swings++; S.hashes += count; hps = count / (ms / 1000); lastSwingMs = ms; orbs();
+  S.swings++; S.hashes += count; hps = count / (ms / 1000); lastSwingMs = ms; lastParts = parts.got.map(x => ({ count: x.count, ms: x.ms })); orbs();
   setTimeout(() => resolveSwing({ ...best, count, ms }), Math.max(0, SWING_MS - (performance.now() - swingStart)));
 }
 function resolveSwing(d) {
   if (d.id !== swingId) return;
   const gr = gradeOf(d.bits), r = rocks[d.rock], wasFull = S.inv.length >= PACK;
   S.bitsHist[d.bits] = (S.bitsHist[d.bits] || 0) + 1; rateHist.push(hps); if (rateHist.length > 60) rateHist.shift();
+  { const z = (d.hash.match(/^0*/) || [''])[0]; $('#hashLine').innerHTML = `nonce ${int(d.nonce)} · <b class="${gr ? gr.id : ''}">${z || '·'}</b>${d.hash.slice(z.length, z.length + 18)}… <span>${d.bits} bits</span>`; }
   if (!S.best || d.bits > S.best.b) S.best = { b: d.bits, h: d.hash, n: d.nonce, r: d.rock, s: d.seed };
   if (gr) {
-    const rich = vein?.rock === d.rock, it = { g: gr.id, b: d.bits, h: d.hash, n: d.nonce, r: d.rock, s: d.seed, t: Date.now() };
+    const vr = vein?.rock === d.rock, rush = !!LIVE?.rush?.active, rich = vr || rush, it = { g: gr.id, b: d.bits, h: d.hash, n: d.nonce, r: d.rock, s: d.seed, t: Date.now() };
     S.proofs.push(it); keepProofs(); S.finds[gr.id]++;
     for (let k = 0; k < (rich ? 2 : 1) && S.inv.length < PACK; k++) S.inv.push(k ? { ...it, dup: 1 } : it);
-    gm(gr.msg + (gr.bits >= 22 ? ` (${d.bits} zero bits)` : '') + (rich ? ' The rich vein doubles it.' : ''), gr.cls);
-    if (rich) S.flags.vein = 1;
+    gm(gr.msg + (gr.bits >= 22 ? ` (${d.bits} zero bits)` : '') + (vr ? ' The rich vein doubles it.' : rush ? ' The Gold Rush doubles it.' : ''), gr.cls);
+    if (vr) S.flags.vein = 1; if (rush) S.flags.rush = 1; sfx('find', gr.id);
+    if (gr.bits >= 22) { S.feedQ.push({ rock: d.rock, seed: d.seed, nonce: d.nonce }); if (S.feedQ.length > 20) S.feedQ.shift(); clearTimeout(hbSoon); hbSoon = setTimeout(heartbeat, 1500); }
     addXp(gr.xp, gr); burst(r, gr.bits >= 22 ? 14 : 5, gr.id === 'core' ? '#ffd25a' : gr.id === 'crystal' ? '#c7a2ff' : gr.id === 'gem' ? '#97fbd3' : undefined);
     if (gr.bits >= 22) flash(gr.id);
+    if (gr.bits >= 25) { const L = $('#lvlUp'); L.hidden = false; L.innerHTML = `<b>${gr.name}!</b>${d.bits} zero bits`; L.style.animation = 'none'; void L.offsetWidth; L.style.animation = ''; clearTimeout(L._h); L._h = setTimeout(() => L.hidden = true, 3700); cv.classList.remove('shake'); void cv.offsetWidth; cv.classList.add('shake'); for (let i = 0; i < 90; i++) { const a = Math.random() * 6.283, sp = rnd(30, 90); fireworks.push({ x: r.full.ox + r.full.w / 2, y: r.full.oy + 10, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, l: rnd(.7, 1.6), c: gr.id === 'core' ? ['#ffd25a', '#fff2b2', '#e8a32a'][i % 3] : ['#c7a2ff', '#9b4dff', '#ffffff'][i % 3] }); } }
     if (!S.pet && d.hash.endsWith('00')) { S.pet = Date.now(); gm('A little rock golem shakes itself loose and starts following you.', 'g'); toast('Pet found: a rock golem'); pet.x = me.x; pet.y = me.y; }
     if (--r.left <= 0) { r.respawn = Date.now() + irnd(15000, 32000); if (vein?.rock === r.i) endVein(); }
     if (S.autoSubmit && S.name && S.proofs.filter(p => !S.sent[p.h]).length >= 10) submitFinds(true);
@@ -263,7 +330,8 @@ function stopMining() { active = null; busy = false; swingId++; parts = null; $(
 function addXp(n, gr) {
   const before = level(S.xp); S.xp += n; const after = level(S.xp); xpDrop(n, gr);
   if (after > before) {
-    gm(`Congratulations, you've just advanced your Mining level. You are now level ${after}.`, 'b');
+    gm(`Congratulations, you've just advanced your Mining level. You are now level ${after}.`, 'b'); sfx('level');
+    if (rank(after) !== rank(before)) gm(`You are now a ${rank(after)}.`, 'g');
     HEADS.filter(h => h.lv > before && h.lv <= after).forEach(h => gm(`You can now forge the ${h.name} at the smithy.`, 'g'));
     HANDS.filter(h => h.lv > before && h.lv <= after && h.n > 1).forEach(h => gm(`You can now take on ${h.name.toLowerCase()} at the smithy.`, 'g'));
     const L = $('#lvlUp'); L.hidden = false; L.innerHTML = `<b>Level up!</b>Mining level ${after}`; L.style.animation = 'none'; void L.offsetWidth; L.style.animation = '';
@@ -302,7 +370,7 @@ $('#logClear').onclick = () => { log.innerHTML = ''; };
 function bigTerm(on) { S.big = on === undefined ? !S.big : !!on; $('.client').classList.toggle('big', S.big); save(); acts(); setTimeout(() => { log.scrollTop = log.scrollHeight; }, 60); }
 $('.client').classList.toggle('big', !!S.big);
 $('#termSize').onclick = () => bigTerm();
-const QUICK = ['help', 'commands', 'stats', 'xp', 'odds', 'best', 'verify best', 'pack', 'rocks', 'price', 'hsol', 'apy', 'epoch', 'tps', 'drop', 'plan', 'holders', 'ledger', 'board', 'submit', 'export', 'docs', 'clear'];
+const QUICK = ['help', 'commands', 'neofetch', 'stats', 'xp', 'odds', 'top', 'bench', 'daily', 'live', 'best', 'verify best', 'rocks', 'ls', 'price', 'hsol', 'apy', 'epoch', 'tps', 'drop', 'plan', 'holders', 'board', 'submit', 'export', 'ping', 'matrix', 'docs', 'clear'];
 $('#qcmd').innerHTML = QUICK.map(c => `<button type="button" data-q="${c}">${c}</button>`).join('');
 $$('#qcmd [data-q]').forEach(b => b.onclick = () => runLine(b.dataset.q));
 const hist = []; let hi = 0;
@@ -401,6 +469,22 @@ const DOCS = {
   about: ['about', 'What M1NT is.'],
   home: ['home', 'Back to the home page.'],
   reset: ['reset yes', 'Wipes your progress in this browser.'],
+  live: ['live', 'Who is mining right now, the Gold Rush meter and the newest verified finds.'],
+  daily: ['daily', 'Today’s three missions and the daily chest.'],
+  rank: ['rank', 'Your rank and the next one.'],
+  sound: ['sound [on|off]', 'Sound effects. Off until you turn them on.'],
+  neofetch: ['neofetch', 'Your miner at a glance, the terminal way.'],
+  whoami: ['whoami', 'Your name, rank and seed.'],
+  ls: ['ls', 'Your pack, bank, finds, quests and smithy, listed like files.'],
+  top: ['top', 'Each mining hand and its hash rate on the last swing.'],
+  bench: ['bench', 'Times 300,000 hashes on every hand and reports your real hash rate.'],
+  hash: ['hash <any text>', 'SHA-256 of any text, with its zero bits and grade.'],
+  ping: ['ping', 'How long the API takes to answer.'],
+  uptime: ['uptime', 'Time on the page, mining this session and in total.'],
+  history: ['history', 'The commands you have typed.'],
+  echo: ['echo <text>', 'Prints the text back.'],
+  matrix: ['matrix', 'Five seconds of falling hex over the cave.'],
+  emote: ['emote <word> · gm · gg · lfg …', 'Shows a word over your miner for everyone in the live mine: gm, gn, gg, lfg, wagmi, hodl, nice, rich, ty or o7.'],
 };
 const HELP = [['mine <1-5> · stop · auto on|off', 'work a rock'], ['pack · bank · stats · best · xp', 'what you found'], ['verify <slot|hash|best> · examine <slot>', 're-hash any find'], ['smith · buy pick|hands · smelt dust|ore|gem', 'upgrade at the smithy'], ['quests · log · card · streak · pet', 'your progress'], ['wallet · connect · disconnect', 'your wallet'], ['quote <sol> [hsol|m1nt] · swap <sol> [hsol|m1nt]', 'trade through Jupiter'], ['price · hsol · apy · slot · epoch · tps', 'the chain, live'], ['drop · plan · ledger · holders', 'the hourly payout'], ['name <you> · submit · board', 'the miners board'], ['ca · x · chart · home · clear · export · reset', 'the rest'], ['ctrl+k', 'every action, searchable']];
 const CMDS = {
@@ -412,6 +496,28 @@ const CMDS = {
   rocks: () => rocks.forEach(r => gm(`rock ${r.i + 1}: ${r.respawn ? `empty, refills in ${clock(r.respawn - Date.now())}` : `about ${r.left} finds left`}${vein?.rock === r.i ? ' · rich vein, double loot for ' + clock(vein.until - Date.now()) : ''}${active === r.i ? ' · you are here' : ''}`, r.respawn ? 'd' : vein?.rock === r.i ? 'g' : 'y')),
   odds: () => { const n = head().swing * hands(); gm(`${int(n)} hashes a swing (${int(head().swing)} × ${hands()} hand${hands() > 1 ? 's' : ''}):`, 'y'); GRADES.forEach(g2 => { const p = 1 - Math.pow(1 - 2 ** -g2.bits, n); gm(`  ${g2.name.padEnd(14)} ${g2.bits}+ bits  ${p > .995 ? '~100%' : pct(p, p < .01 ? 3 : 1)} a swing · about one in ${p > .995 ? '1' : compact(1 / p).replace('.00', '')} swings`, g2.cls || ''); }); },
   proofs: () => { const un = S.proofs.filter(p => !S.sent[p.h]).length; gm(`${S.proofs.length} finds kept · ${un} not on the board yet${un ? ' (type submit)' : ''}.`, 'y'); },
+  live: () => { tab('live'); const L = LIVE; if (!L?.live) return msg('The live mine is offline right now.', 'r'); msg(`${L.online.length} mining · ${L.hps ? fmtH(L.hps) + ' H/s mine-wide' : 'nobody swinging'} · Gold Rush ${L.rush.active ? 'ON' : `${L.rush.n}/${L.rush.goal}`}`, 'y'); },
+  daily: () => { dailyInit(); S.daily.picks.forEach(p => gm(`${p.done ? '✓' : '·'} ${dailyText(p)}  ${compact(Math.min(p.n, dailyProg(p))).replace('.00', '')}/${compact(p.n).replace('.00', '')}`, p.done ? 'g' : 'y')); gm(S.daily.chest ? 'The daily chest is open. New missions at 00:00 UTC.' : 'Finish all three for the daily chest.', 'd'); },
+  rank: () => { const lv = level(S.xp), nx = RANKS.find(r => r[0] > lv); gm(`You are a ${rank(lv)} (level ${lv}).${nx ? ` ${nx[1]} at level ${nx[0]}.` : ''}`, 'y'); },
+  sound: a => { S.sound = a[0] ? a[0].toLowerCase() === 'on' : !S.sound; save(); paint(['opts']); gm(`Sound effects ${S.sound ? 'on' : 'off'}.`, 'y'); sfx('find', 'gem'); },
+  neofetch: () => { const lv = level(S.xp), art = ['   ___________', '  /  _______  \\', ' /__/   ||  \\__\\', '        ||', '        ||', '        ||', '        ||', '       _||_'], info = [`${S.name || 'anon'}@m1nt`, '-'.repeat(16), `rank     ${rank(lv)}`, `level    ${lv} · ${int(S.xp)} XP`, `pickaxe  ${head().name}`, `hands    ${hands()} of ${MAXH} cores`, `rate     ${hps ? fmtH(hps) + ' H/s' : 'idle'}`, `finds    ${int(totalFinds())} · best ${S.best ? S.best.b : 0} bits`]; art.forEach((x, i) => gm(`${x.padEnd(18)}${info[i] || ''}`, i ? 'y' : 'g')); },
+  whoami: () => gm(`${S.name || 'anon'} · ${rank(level(S.xp))} · seed ${S.seed}`, 'y'),
+  ls: () => { const un = S.proofs.filter(p => !S.sent[p.h]).length; [['pack/', `${S.inv.length}/${PACK} items`], ['bank/', `${int(totalBank())} items`], ['proofs.json', `${S.proofs.length} finds, ${un} not on the board`], ['quests/', `${QUESTS.filter(q => S.qdone[q[0]]).length}/${QUESTS.length} done`], ['smithy/', `${head().name} · ${hands()} hand${hands() > 1 ? 's' : ''}`], ['daily/', S.daily ? `${S.daily.picks.filter(p => p.done).length}/3 missions` : '—']].forEach(([f, d]) => gm(`${f.padEnd(14)}${d}`, f.endsWith('/') ? 'c' : 'y')); },
+  top: () => { if (!lastParts.length) return gm('No swings yet. Press M to mine.', 'd'); gm('hand   hash rate     hashes      time', 'd'); lastParts.forEach((p, i) => gm(`${String(i + 1).padEnd(7)}${(fmtH(p.count / (p.ms / 1000)) + ' H/s').padEnd(14)}${int(p.count).padEnd(12)}${Math.round(p.ms)} ms`, 'y')); gm(`all    ${fmtH(hps)} H/s`, 't'); },
+  bench: async () => {
+    if (busy) return gm('Stop mining first (S), then bench.', 'r');
+    const n = hands(), id = -Date.now(), per = 300000; gm(`Timing ${int(per * n)} hashes on ${n} hand${n > 1 ? 's' : ''}…`, 'd'); const t1 = performance.now();
+    const got = await new Promise(done => { benchWait[id] = { need: n, got: [], done }; for (let i = 0; i < n; i++) getWorker(i).postMessage({ id, rock: 0, seed: 'bench-' + S.cid, from: i * per, count: per }); });
+    const ms = performance.now() - t1; gm(`${fmtH(per * n / (ms / 1000))} H/s with ${n} hand${n > 1 ? 's' : ''} (${Math.round(ms)} ms). Each hand: ${got.map(x => fmtH(x.count / (x.ms / 1000))).join(', ')} H/s.`, 't');
+  },
+  hash: async a => { const t = a.join(' '); if (!t) return gm('hash <any text>, like: hash gm', 'r'); const h = await sha256hex(t), b = zbits(h); gm(`sha256("${t}")`, 'd'); gm(h, 'c'); gm(`${b} zero bits → ${gradeOf(b)?.name || 'nothing yet'}${b < 18 ? ` (dust needs ${18 - b} more)` : ''}`, gradeOf(b) ? 't' : 'y'); },
+  ping: async () => { const t1 = performance.now(); try { await api('state'); msg(`pong · ${Math.round(performance.now() - t1)} ms to the API`, 'y'); } catch (e) { msg('No answer: ' + friendly(e) + '.', 'r'); } },
+  uptime: () => gm(`page open ${dur(Date.now() - sess.t0)} · mining ${dur(sess.mined)} this session · ${dur(S.mineMs)} in total`, 'y'),
+  history: () => hist.length ? hist.forEach((h, i) => msg(`${String(i + 1).padStart(3)}  ${h}`, 'd')) : msg('No commands yet.', 'd'),
+  echo: a => msg(a.join(' ') || ' ', 'y'),
+  matrix: () => { mcols.length = 0; matrixUntil = performance.now() + 5000; gm('Wake up, miner.', 't'); },
+  sudo: () => msg('Nice try. Nobody has root in the mine.', 'r'),
+  emote: a => emote(a[0]),
   seed: () => { gm(`seed ${S.seed} · next nonce ${int(S.nonce)}`, 'y'); gm('Every hash is sha256("m1nt|<rock>|<seed>|<nonce>"). Change your name to get a new seed.', 'd'); },
   mine: a => a[0] ? mine(+a[0] - 1) : mineAny(),
   stop: () => { stopMining(); gm('You stop mining.', 'd'); },
@@ -458,11 +564,14 @@ const CMDS = {
   time: () => msg(new Date().toUTCString(), 'y'),
   about: () => { msg('M1NT: a coin with a mine attached. Its creator fees become hSOL and drop to holders every hour, encrypted.', 'y'); msg('This terminal mines with real SHA-256 proof of work. Finds earn XP, upgrades and a place on the board, not tokens.', 'y'); },
 };
-const ALIAS = { inv: 'pack', level: 'stats', sol: 'price', net: 'tps', balance: 'wallet', '?': 'help', upgrade: 'smith', collection: 'log', cmds: 'commands', manual: 'docs' };
+const ALIAS = { inv: 'pack', level: 'stats', sol: 'price', net: 'tps', balance: 'wallet', '?': 'help', upgrade: 'smith', collection: 'log', cmds: 'commands', manual: 'docs', date: 'time', missions: 'daily' };
+CMDS.date = CMDS.time; CMDS.missions = CMDS.daily;
+for (const w of ['gm', 'gn', 'gg', 'lfg', 'wagmi', 'hodl', 'nice', 'rich', 'ty', 'o7']) CMDS[w] = () => emote(w);
 CMDS.cmds = CMDS.commands; CMDS.manual = CMDS.docs; CMDS.inv = CMDS.pack; CMDS.level = CMDS.stats; CMDS.sol = CMDS.price; CMDS.net = CMDS.tps; CMDS.balance = CMDS.wallet; CMDS['?'] = CMDS.help; CMDS.upgrade = CMDS.smith; CMDS.collection = CMDS.log;
 const CMD_CH = {}; for (const k of ['price', 'sol', 'hsol', 'apy', 'slot', 'epoch', 'tps', 'net', 'drop', 'plan', 'ledger', 'holders', 'ca', 'chart', 'x']) CMD_CH[k] = 'chain';
 for (const k of ['wallet', 'balance', 'connect', 'disconnect', 'quote', 'swap']) CMD_CH[k] = 'wallet'; for (const k of ['name', 'submit', 'board']) CMD_CH[k] = 'board';
-for (const k of ['mine', 'stop', 'auto', 'pack', 'inv', 'bank', 'stats', 'level', 'xp', 'best', 'verify', 'examine', 'smith', 'buy', 'smelt', 'quests', 'log', 'card', 'streak', 'pet', 'upgrade', 'collection', 'rocks', 'odds', 'proofs', 'seed']) CMD_CH[k] = 'game';
+for (const k of ['mine', 'stop', 'auto', 'pack', 'inv', 'bank', 'stats', 'level', 'xp', 'best', 'verify', 'examine', 'smith', 'buy', 'smelt', 'quests', 'log', 'card', 'streak', 'pet', 'upgrade', 'collection', 'rocks', 'odds', 'proofs', 'seed', 'daily', 'missions', 'rank', 'neofetch', 'whoami', 'ls', 'top', 'bench', 'hash', 'matrix', 'sound']) CMD_CH[k] = 'game';
+CMD_CH.live = 'board'; CMD_CH.emote = 'board'; for (const w of ['gm', 'gn', 'gg', 'lfg', 'wagmi', 'hodl', 'nice', 'rich', 'ty', 'o7']) CMD_CH[w] = 'board';
 async function run(line) {
   const [c, ...a] = line.split(/\s+/), fn = CMDS[c.toLowerCase()];
   if (!fn) return msg(`Nothing interesting happens. ("${c}" is not a command; try help)`, 'd', false, 'sys');
@@ -474,7 +583,7 @@ function mineAny() { const r = (vein && !rocks[vein.rock].respawn ? rocks[vein.r
 // ---------------- the pack, the bank and the smithy
 function bankAll(quiet) {
   if (!S.inv.length) return quiet === true || gm('Your pack is empty.', 'd');
-  const n = S.inv.length; S.inv.forEach(p => S.bank[p.g]++); S.banked += n; S.inv = []; save(); paint(['inv', 'smith', 'log']); gm(`You deposit ${n} item${n > 1 ? 's' : ''} into the bank.`, 'y'); checkQuests();
+  const n = S.inv.length; S.inv.forEach(p => S.bank[p.g]++); S.banked += n; S.inv = []; save(); carts.push({ x: -30 - X0 }); sfx('bank'); paint(['inv', 'smith', 'log']); gm(`You deposit ${n} item${n > 1 ? 's' : ''} into the bank.`, 'y'); checkQuests();
 }
 const canPay = cost => Object.entries(cost).every(([k, v]) => S.bank[k] >= v);
 const costText = cost => Object.entries(cost).map(([k, v]) => `${v} ${G(k).name}`).join(' + ') || 'free';
@@ -545,11 +654,44 @@ const QUESTS = [
   ['card', 'Show-off', 'Make your miner card.', () => [S.flags.card ? 1 : 0, 1]],
   ['streak', 'Regular', 'Mine three days in a row.', () => [S.streak.n, 3]],
   ['shift', 'Long shift', 'Mine for 30 minutes in total.', () => [Math.floor(S.mineMs / 60000), 30]],
+  ['company', 'Not alone', 'Mine while another miner is online.', () => [S.flags.company ? 1 : 0, 1]],
+  ['rush', 'Gold rush', 'Make a find during a Gold Rush.', () => [S.flags.rush ? 1 : 0, 1]],
+  ['daily', 'Daily grind', 'Open a daily chest.', () => [S.flags.chest || 0, 1]],
+  ['emote', 'Say gm', 'Send an emote to the live mine.', () => [S.flags.emote ? 1 : 0, 1]],
 ];
+const DAILY = [
+  ['ore', 'Find {n} hSOL ore or better', () => S.finds.ore + S.finds.gem + S.finds.crystal + S.finds.core, [5, 10, 16]],
+  ['gem', 'Find {n} cut gem{s} or better', () => S.finds.gem + S.finds.crystal + S.finds.core, [1, 2, 4]],
+  ['hash', 'Compute {n} hashes', () => S.hashes, [5e6, 2e7, 6e7]],
+  ['bank', 'Bank {n} items', () => S.banked, [28, 56, 112]],
+  ['finds', 'Make {n} finds', () => totalFinds(), [15, 30, 60]],
+  ['swings', 'Swing {n} times', () => S.swings, [40, 100, 220]],
+  ['xp', 'Earn {n} XP', () => S.xp, [400, 1500, 5000]],
+];
+const utcDay = () => new Date().toISOString().slice(0, 10);
+function dailyInit() {
+  if (S.daily?.day === utcDay()) return;
+  let h = 0; for (const ch of utcDay()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const lv = level(S.xp), band = lv < 15 ? 0 : lv < 35 ? 1 : 2, pool = [...DAILY], picks = [];
+  for (let i = 0; i < 3; i++) { h = (Math.imul(h, 1103515245) + 12345) >>> 0; const [key, , get, ns] = pool.splice(h % pool.length, 1)[0]; picks.push({ key, n: ns[band], base: get(), done: false }); }
+  S.daily = { day: utcDay(), picks, chest: false }; save(); paint(['quests']);
+}
+const dailyDef = key => DAILY.find(d => d[0] === key);
+const dailyProg = p => Math.max(0, dailyDef(p.key)[2]() - p.base);
+const dailyText = p => dailyDef(p.key)[1].replace('{n}', compact(p.n).replace('.00', '')).replace('{s}', p.n > 1 ? 's' : '');
+function dailyClaim(i) {
+  const p = S.daily?.picks[i]; if (!p || p.done || dailyProg(p) < p.n) return;
+  p.done = true; S.bank.dust += 6; S.bank.ore += 2; save(); gm(`Daily mission done: ${dailyText(p)}. +6 ore dust and +2 hSOL ore in the bank.`, 'g'); sfx('quest'); paint(['quests', 'inv', 'smith']); checkQuests();
+}
+function dailyChest() {
+  if (!S.daily || S.daily.chest || !S.daily.picks.every(p => p.done)) return;
+  const crystal = Math.random() < .08; S.daily.chest = true; S.bank.dust += 12; S.bank.ore += 5; S.bank.gem += 1; if (crystal) S.bank.crystal += 1; S.flags.chest = (S.flags.chest || 0) + 1; save();
+  gm(`You open the daily chest: 12 ore dust, 5 hSOL ore, 1 cut gem${crystal ? ' and an hSOL crystal!' : '.'}`, 'g'); toast('Daily chest opened'); sfx('level'); paint(['quests', 'inv', 'smith']); checkQuests();
+}
 function checkQuests() {
   for (const [id, name, , f] of QUESTS) {
     if (S.qdone[id]) continue; const [c, m] = f();
-    if (c >= m) { S.qdone[id] = Date.now(); S.qp++; gm(`Quest complete: ${name}! You now have ${S.qp} quest point${S.qp > 1 ? 's' : ''}.`, 'g'); toast(`Quest complete: ${name}`); save(); paint(['quests']); }
+    if (c >= m) { S.qdone[id] = Date.now(); S.qp++; sfx('quest'); gm(`Quest complete: ${name}! You now have ${S.qp} quest point${S.qp > 1 ? 's' : ''}.`, 'g'); toast(`Quest complete: ${name}`); save(); paint(['quests']); }
   }
 }
 
@@ -579,7 +721,7 @@ const PANES = {
   },
   skill(P, s, lv) {
     const next = lv < 99 ? XPT[lv] : XPT[98], prev = XPT[lv - 1], k = lv < 99 ? (S.xp - prev) / (next - prev) : 1, tot = S.swings || 0, ph = xpHour();
-    P.innerHTML = `<h4>Mining <small>level ${lv}</small></h4>${kv('Experience', int(S.xp) + ' XP', 'g')}${kv('Next level', lv < 99 ? int(next - S.xp) + ' XP' : 'max')}<div class="bar2 g"><i style="width:${(k * 100).toFixed(1)}%"></i></div>
+    P.innerHTML = `<h4>Mining <small>level ${lv}</small></h4>${kv('Rank', rank(lv) + (RANKS.find(r => r[0] > lv) ? ` <small>· ${RANKS.find(r => r[0] > lv)[1]} at ${RANKS.find(r => r[0] > lv)[0]}</small>` : ''), 't')}${kv('Experience', int(S.xp) + ' XP', 'g')}${kv('Next level', lv < 99 ? int(next - S.xp) + ' XP' : 'max')}<div class="bar2 g"><i style="width:${(k * 100).toFixed(1)}%"></i></div>
       ${kv('XP an hour', ph ? int(ph) : dash, 't')}${kv('Time to level', ph && lv < 99 ? dur((next - S.xp) / ph * 3600e3) : dash)}
       <div class="tierpick">${pickIco(head().tint, 'l')}<div><b>${head().name}</b><span>${int(head().swing)} hashes × ${hands()} hand${hands() > 1 ? 's' : ''} a swing</span></div></div>
       <div class="sec"><h4>This pickaxe</h4>${kv('Hash rate', hps ? fmtH(hps) + ' H/s' : dash, 't')}${kv('Swings', int(tot))}${kv('Hashes', fmtH(S.hashes))}${kv('Empty swings', tot ? pct(S.fails / tot, 0) : dash)}</div>
@@ -587,9 +729,12 @@ const PANES = {
       <p class="sec">${holder ? 'You hold $M1NT, so you share in the hourly hSOL drop.' : 'Hold $M1NT to share in the hourly hSOL drop.'} Each swing hashes <code>m1nt|rock|seed|nonce</code>; the hash with the most leading zero bits decides what you get.</p>`;
   },
   quests(P) {
-    const done = QUESTS.filter(q => S.qdone[q[0]]).length;
-    P.innerHTML = `<h4>Quests <small>${done}/${QUESTS.length} · ${S.qp} QP</small></h4><div class="bar2 g"><i style="width:${(done / QUESTS.length * 100).toFixed(1)}%"></i></div>
+    const done = QUESTS.filter(q => S.qdone[q[0]]).length, D = S.daily, all = D?.picks.every(p => p.done);
+    const daily = D ? `<h4>Today <small>new at 00:00 UTC</small></h4><ul class="daily">${D.picks.map((p, i) => { const pr = Math.min(p.n, dailyProg(p)); return `<li class="${p.done ? 'done' : pr >= p.n ? 'ready' : ''}"><b>${dailyText(p)}</b><i><u style="width:${(pr / p.n * 100).toFixed(1)}%"></u></i><em>${compact(pr).replace('.00', '')} / ${compact(p.n).replace('.00', '')}</em>${p.done ? '<span>claimed</span>' : pr >= p.n ? `<button class="btn sm" type="button" data-claim="${i}">Claim</button>` : ''}</li>`; }).join('')}</ul>
+      <button class="btn sm${all && !D.chest ? '' : ' ghost'}" id="chestBtn" type="button" ${all && !D.chest ? '' : 'disabled'}>${D.chest ? 'Chest opened today' : all ? 'Open the daily chest' : 'Daily chest: finish all three'}</button><div class="sec"></div>` : '';
+    P.innerHTML = daily + `<h4>Quests <small>${done}/${QUESTS.length} · ${S.qp} QP</small></h4><div class="bar2 g"><i style="width:${(done / QUESTS.length * 100).toFixed(1)}%"></i></div>
       <ul class="quests">${QUESTS.map(([id, name, desc, f]) => { const [c, m] = f(), d = !!S.qdone[id], st = d ? 'done' : c > 0 ? 'prog' : 'todo'; return `<li class="${st}" title="${esc(desc)}"><b>${name}</b><span>${desc}</span>${!d && m > 1 ? `<em>${compact(Math.min(c, m)).replace('.00', '')} / ${compact(m).replace('.00', '')}</em>` : ''}</li>`; }).join('')}</ul>`;
+    $$('[data-claim]', P).forEach(b => b.onclick = () => dailyClaim(+b.dataset.claim)); const cb = $('#chestBtn', P); if (cb) cb.onclick = dailyChest;
   },
   log(P) {
     const items = GRADES.map(g2 => `<div class="cl${S.finds[g2.id] ? '' : ' none'}">${ico(g2.id, 'l')}<b>${int(S.finds[g2.id])}</b><span>${g2.name}</span></div>`).join('') +
@@ -619,6 +764,18 @@ const PANES = {
       <div class="sec"><h4>Best bits a swing <small>all time</small></h4><canvas id="stBits" class="px chart" width="300" height="84"></canvas></div>
       <div class="sec"><h4>All time</h4>${kv('Swings', int(S.swings))}${kv('Hashes', fmtH(S.hashes))}${kv('Mining time', dur(S.mineMs))}${kv('Items banked', int(S.banked))}${kv('Full packs', int(S.fullPacks))}${kv('Days in a row', S.streak.n)}</div>`;
     drawRate($('#stRate')); drawBits($('#stBits'));
+  },
+  live(P) {
+    const L = LIVE;
+    if (!L) { P.innerHTML = '<h4>Live</h4><p>Joining the mine…</p>'; return; }
+    if (!L.live) { P.innerHTML = `<h4>Live</h4>${offline('The live mine is offline', esc(cap(L.why || 'it could not be reached')) + '. You can still mine; your finds are kept in this browser.')}`; return; }
+    const ago = t => { const s2 = Math.max(0, Math.floor(Date.now() / 1000 - t)); return s2 < 60 ? s2 + 's' : s2 < 3600 ? Math.floor(s2 / 60) + 'm' : Math.floor(s2 / 3600) + 'h'; };
+    P.innerHTML = `<h4>Live <small>right now</small></h4><div class="emotes">${EMOTES.map(w => `<button type="button" data-emote="${w}">${w}</button>`).join('')}</div>${kv('Miners online', int(L.online.length), 't')}${kv('Mine-wide hash rate', L.hps ? fmtH(L.hps) + ' H/s' : dash, 'g')}
+      <div class="sec"><h4>Gold Rush <small>${L.rush.active ? 'on · double loot' : `${L.rush.n}/${L.rush.goal} in 10 min`}</small></h4><div class="bar2 g"><i style="width:${Math.min(100, L.rush.n / L.rush.goal * 100).toFixed(1)}%"></i></div><p>Every gem, crystal or core anyone finds fills the meter. At ${L.rush.goal} in ten minutes, everybody gets double loot.</p></div>
+      <div class="sec"><h4>Verified finds <small>gem or better</small></h4>${L.feed.length ? `<ul class="list">${L.feed.slice(0, 14).map(f => `<li><span class="rk">${G(f.grade) ? ico(f.grade) : ''}</span><span class="a">${esc(f.name)} · ${G(f.grade)?.name || esc(f.grade)}</span><b>${f.bits} bits · ${ago(f.t)}</b></li>`).join('')}</ul>` : '<p>No gems in the feed yet. The first one shows up here.</p>'}</div>
+      <div class="sec"><h4>Mining now</h4>${L.online.length ? `<ul class="list">${L.online.slice(0, 20).map(o => `<li class="${o.self ? 'me' : ''}"><span class="rk">${o.lv}</span><span class="a">${esc(o.name)}${o.self ? ' (you)' : ''} · ${rank(o.lv)} · ${(HEADS[o.head]?.name || '').replace(' pickaxe', '')}</span><b>${o.hps ? fmtH(o.hps) : 'idle'}</b></li>`).join('')}</ul>` : '<p>Nobody else is here yet.</p>'}</div>
+      <p class="sec">Finds of gem grade or better are re-hashed by the server before they show here. A miner drops off the list 45 seconds after leaving.</p>`;
+    $$('[data-emote]', P).forEach(b => b.onclick = () => emote(b.dataset.emote));
   },
   wallet(P) {
     if (!session.address) { P.innerHTML = `<h4>Wallet</h4><p>Connect to see your SOL, hSOL and $M1NT, your share of the next drop, and to swap.</p><button class="btn" id="wConnect" type="button">Connect a wallet</button>`; $('#wConnect').onclick = openWallets; return; }
@@ -664,24 +821,28 @@ const PANES = {
       ${s?.coin ? `<div class="sec"><h4>$M1NT</h4>${s.coin.listed ? kv('Price', usd(s.coin.price), 'g') + kv('Market cap', usd(s.coin.mcap, 0)) + kv('Liquidity', usd(s.coin.liq, 0)) + kv('Volume 24h', usd(s.coin.vol24, 0)) + kv('Buys / sells', `${int(s.coin.buys)} / ${int(s.coin.sells)}`) : '<p>Not listed on a DEX yet.</p>'}</div>` : ''}`;
   },
   board(P) {
-    const b = cache.board, unsent = S.proofs.filter(p => !S.sent[p.h]).length, mine = b?.live ? b.rows.findIndex(r => r.name === S.name) : -1;
+    const b = cache.board, unsent = S.proofs.filter(p => !S.sent[p.h]).length, mine = b?.live ? b.rows.findIndex(r => r.name === S.name) : -1, day = cache.boardDay;
     P.innerHTML = `<h4>Miners board <small>${b?.live ? int(b.total.miners) + ' miners · ' + compact(b.total.finds).replace('.00', '') + ' finds' : ''}</small></h4>
       <label for="bdName">Your name</label><input id="bdName" maxlength="16" placeholder="2–16 characters" value="${esc(S.name)}">
       <div class="row2"><button class="btn sm ghost" id="bdSave" type="button">Save name</button><button class="btn sm" id="bdSub" type="button">Submit ${unsent}</button></div>
-      ${mine >= 0 ? kv('Your rank', '#' + (mine + 1), 'g') : ''}
+      <div class="seg"><button type="button" data-scope="all" aria-pressed="${!day}">All time</button><button type="button" data-scope="day" aria-pressed="${!!day}">Last 24 hours</button></div>
+      ${mine >= 0 ? kv('Your place', '#' + (mine + 1), 'g') : ''}${b?.live && b.rarest ? kv('Rarest find', `${esc(b.rarest.name)} · ${b.rarest.bits} bits`, 't') : ''}
       <div class="sec">${b === null ? '<p>Loading the board…</p>' : b.live ? (b.rows.length ? `<ul class="list">${b.rows.map((r, i) => `<li class="${r.name === S.name ? 'me' : ''}"><span class="rk">${i < 3 ? ['①', '②', '③'][i] : i + 1}</span><span class="a">${esc(r.name)} · ${r.best} bits</span><b>${int(r.xp)} XP</b></li>`).join('')}</ul>` : '<p>Nobody has submitted yet. The first name on the board could be yours.</p>') : offline('The board is offline', esc(cap(b.why)) + '. Your finds stay in this browser and can be submitted later.')}</div>
       <p class="sec">The server re-hashes every find before it counts, so the board cannot be faked with made-up numbers.</p>`;
+    $$('[data-scope]', P).forEach(x => x.onclick = () => { cache.boardDay = x.dataset.scope === 'day'; cache.board = null; paint(['board']); loadBoard(true); });
     $('#bdSave').onclick = () => CMDS.name([$('#bdName').value]); $('#bdSub').onclick = () => { if ($('#bdName').value.trim() && $('#bdName').value.trim() !== S.name) CMDS.name([$('#bdName').value]); submitFinds(); };
   },
   opts(P) {
     const tog = (id, on, label) => `<button class="tog${on ? ' on' : ''}" id="${id}" type="button" aria-pressed="${on}"><i></i>${label}</button>`;
     P.innerHTML = `<h4>Options</h4>${kv('Mining as', esc(S.name || 'anon'))}${kv('Seed', esc(S.seed))}
-      <div class="togs">${tog('oAuto', S.auto, 'Move to the next rock when one runs dry')}${tog('oBank', S.autoBank, 'Bank automatically when the pack is full')}${tog('oSub', S.autoSubmit, 'Submit to the board every 10 finds')}${tog('oFx', S.fx, 'Sparkles, bats and drips')}</div>
+      <div class="togs">${tog('oAuto', S.auto, 'Move to the next rock when one runs dry')}${tog('oBank', S.autoBank, 'Bank automatically when the pack is full')}${tog('oSub', S.autoSubmit, 'Submit to the board every 10 finds')}${tog('oFx', S.fx, 'Sparkles, bats and drips')}${tog('oSnd', S.sound, 'Sound effects')}</div>
+      <label for="oVol">Volume</label><select id="oVol">${[[.25, 'Quiet'], [.5, 'Medium'], [.8, 'Loud']].map(([v, l]) => `<option value="${v}" ${Math.abs(S.vol - v) < .01 ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <label for="oCpu">Hands to use <small>(this device: up to ${MAXH})</small></label><select id="oCpu"><option value="0">All you own (${Math.min(HANDS[S.up.hands].n, MAXH)})</option>${Array.from({ length: Math.min(HANDS[S.up.hands].n, MAXH) }, (_, i) => `<option value="${i + 1}" ${S.cpu === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select>
       <div class="row2"><button class="btn sm ghost" id="oExp" type="button">Export finds</button><button class="btn sm ghost" id="oCard" type="button">Miner card</button></div>
       <button class="btn sm ghost" id="oReset" type="button">Reset progress</button>
       <div class="sec"><h4>Links</h4>${kv('Home', '<a href="/">m1nt</a>')}${kv('Token', caNow() ? `<a href="${CFG.buy || 'https://pump.fun/coin/'}${caNow()}" target="_blank" rel="noopener">pump.fun</a>` : 'at launch')}${kv('X', xNow() ? `<a href="${esc(xNow())}" target="_blank" rel="noopener">profile</a>` : 'soon')}</div>`;
     $('#oAuto').onclick = () => CMDS.auto([]); $('#oFx').onclick = () => { S.fx = !S.fx; save(); paint(['opts']); };
+    $('#oSnd').onclick = () => CMDS.sound([]); $('#oVol').onchange = e => { S.vol = +e.target.value; save(); sfx('find', 'gem'); };
     $('#oBank').onclick = () => { S.autoBank = !S.autoBank; save(); paint(['opts']); gm(`Auto-bank is ${S.autoBank ? 'on' : 'off'}.`, 'y'); };
     $('#oSub').onclick = () => { S.autoSubmit = !S.autoSubmit; save(); paint(['opts']); gm(S.autoSubmit ? (S.name ? 'Your finds go to the board every 10 finds.' : 'Auto-submit is on; pick a name on the board tab first.') : 'Auto-submit is off.', 'y'); };
     $('#oCpu').onchange = e => { S.cpu = +e.target.value; save(); gm(`Mining with ${hands()} hand${hands() > 1 ? 's' : ''}.`, 'y'); paint(['opts']); };
@@ -699,7 +860,7 @@ const PANES = {
 };
 async function loadDrop() { try { [cache.drop, cache.ledger] = await Promise.all([api('plan'), api('ledger')]); } catch (e) { cache.drop = { live: false, why: 'the chain could not be read' }; cache.ledger = { live: false }; } paint(['drop']); }
 async function loadHolders() { try { cache.holders = await api('holders'); } catch (e) { cache.holders = { live: false, why: 'the chain could not be read' }; } paint(['holders']); }
-async function loadBoard(force) { if (cache.board && !force) { paint(['board']); } try { cache.board = await api('board'); } catch (e) { cache.board = { live: false, why: friendly(e) }; } paint(['board']); }
+async function loadBoard(force) { if (cache.board && !force) { paint(['board']); } try { cache.board = await api('board', cache.boardDay ? { scope: 'day' } : {}); } catch (e) { cache.board = { live: false, why: friendly(e) }; } paint(['board']); }
 
 // little pixel charts for the stats and chart tabs
 function drawLine(c, vals, col) {
@@ -782,25 +943,27 @@ const ACTIONS = {
   b: ['Bank', () => bankAll()],
   f: ['Smithy', () => tab('smith')],
   q: ['Quests', () => tab('quests')],
-  v: ['Verify best', () => verify(findProof('best'))],
+  v: ['Verify', () => verify(findProof('best'))],
   u: ['Submit', () => submitFinds()],
   w: ['Wallet', () => session.address ? tab('wallet') : openWallets()],
   g: ['Swap', () => tab('swap')],
   c: ['Card', () => openCard()],
-  k: ['Commands', () => palette()],
-  t: ['Bigger terminal', () => bigTerm()],
+  k: ['Palette', () => palette()],
+  l: ['Live', () => tab('live')],
+  t: ['Expand', () => bigTerm()],
   d: ['Docs', () => window.open('/docs', '_blank', 'noopener')],
   '?': ['Help', () => tab('help')],
 };
-$('#acts').innerHTML = Object.entries(ACTIONS).map(([k, [l]]) => `<button type="button" data-act="${k}" class="act act-${k === '?' ? 'h' : k}">${l}<kbd>${k === '?' ? '?' : k.toUpperCase()}</kbd></button>`).join('');
+const GROUPS = [['Mine', 'msa'], ['Items', 'bfq'], ['Proof', 'vuc'], ['Chain', 'lwg'], ['View', 'tkd?']];
+$('#acts').innerHTML = GROUPS.map(([label, keys]) => `<div class="grp"><span class="gl">${label}</span><div class="gb">${[...keys].map(k => `<button type="button" data-act="${k}" class="act act-${k === '?' ? 'h' : k}" title="${ACTIONS[k][0]} · key ${k === '?' ? '?' : k.toUpperCase()}">${ACTIONS[k][0]}<kbd>${k === '?' ? '?' : k.toUpperCase()}</kbd></button>`).join('')}</div></div>`).join('');
 $$('#acts [data-act]').forEach(b => b.onclick = () => ACTIONS[b.dataset.act][1]());
 function acts() {
   const set = (k, on, text) => { const b = $(`#acts [data-act="${k}"]`); if (!b) return; b.classList.toggle('on', on); if (text) b.firstChild.textContent = text; };
-  set('m', active !== null, active !== null ? `Mining ${active + 1}` : 'Mine'); set('a', S.auto, `Auto ${S.auto ? 'on' : 'off'}`); set('s', false); set('t', !!S.big, S.big ? 'Smaller terminal' : 'Bigger terminal');
+  set('m', active !== null, active !== null ? `Mining ${active + 1}` : 'Mine'); set('a', S.auto, `Auto ${S.auto ? 'on' : 'off'}`); set('s', false); set('t', !!S.big, S.big ? 'Shrink' : 'Expand');
   const ts = $('#termSize'); if (ts) ts.textContent = S.big ? 'Shrink' : 'Expand';
   const ub = $('#acts [data-act="u"]'); if (ub) { const n = S.proofs.filter(p => !S.sent[p.h]).length; ub.firstChild.textContent = n ? `Submit ${n}` : 'Submit'; }
 }
-const TABS = { inv: 'Pack', skill: 'Skill', quests: 'Quests', log: 'Collection log', smith: 'Smithy', stats: 'Stats', wallet: 'Wallet', swap: 'Swap', chart: 'Chart', drop: 'The drop', holders: 'Holders', net: 'Chain', board: 'Miners board', opts: 'Options', help: 'Help' };
+const TABS = { inv: 'Pack', skill: 'Skill', quests: 'Quests', log: 'Collection log', smith: 'Smithy', stats: 'Stats', live: 'Live mine', wallet: 'Wallet', swap: 'Swap', chart: 'Chart', drop: 'The drop', holders: 'Holders', net: 'Chain', board: 'Miners board', opts: 'Options', help: 'Help' };
 function palItems() {
   return [
     ...Object.entries(ACTIONS).map(([k, [l, fn]]) => [l, k === '?' ? '?' : k.toUpperCase(), fn]),
@@ -846,7 +1009,7 @@ async function openCard() {
   if (S.pet) GOLEM.forEach((row, j) => [...row].forEach((ch, i) => { if (GC[ch]) { x.fillStyle = GC[ch]; x.fillRect(760 + i * 6, 568 + j * 6 - 42, 6, 6); } }));
   x.fillStyle = '#ffd25a'; x.font = '64px Silk, monospace'; x.fillText('M1NT MINE', 56, 112);
   x.fillStyle = '#fff'; x.font = '58px VT, monospace'; x.fillText(S.name || 'anon miner', 56, 196);
-  const rows = [['Mining level', String(lv)], ['Experience', int(S.xp) + ' XP'], ['Best hash', S.best ? S.best.b + ' zero bits' : '—'], ['Hashes', fmtH(S.hashes)], ['Pickaxe', head().name], ['Quests', `${QUESTS.filter(q => S.qdone[q[0]]).length}/${QUESTS.length}`]];
+  const rows = [['Mining level', `${lv} · ${rank(lv)}`], ['Experience', int(S.xp) + ' XP'], ['Best hash', S.best ? S.best.b + ' zero bits' : '—'], ['Hashes', fmtH(S.hashes)], ['Pickaxe', head().name], ['Quests', `${QUESTS.filter(q => S.qdone[q[0]]).length}/${QUESTS.length}`]];
   rows.forEach(([k, v], i) => { const y = 270 + i * 50; x.fillStyle = '#8d8172'; x.font = '34px VT, monospace'; x.fillText(k, 56, y); x.fillStyle = i === 0 ? '#ffd25a' : i === 2 ? '#19f0a0' : '#fff'; x.fillText(v, 330, y); });
   let ix = 56; GRADES.slice().reverse().forEach(g2 => { x.drawImage(iconsImg, g2.icon * 34, 0, 32, 32, ix, 552, 40, 40); x.fillStyle = '#fff'; x.font = '30px VT, monospace'; const t = compact(S.finds[g2.id]).replace('.00', ''); x.fillText(t, ix + 46, 582); ix += 54 + t.length * 15; });
   x.fillStyle = '#ffd25a'; x.font = '22px Silk, monospace'; x.fillText(location.host + '/mine', 760, 600);
@@ -862,6 +1025,7 @@ const liveSlot = () => { const n = getState()?.net; return n ? n.slot + Math.flo
 function topbar(s) {
   const c = s?.coin, parts = [`SOL <b>${usd(s?.sol?.usd, 2)}</b>`, `1 hSOL <b>${s?.hsol?.rate ? num(s.hsol.rate, 4) : dash}</b> SOL`, `APY <b>${s?.hsol?.apy ? pct(s.hsol.apy, 2) : dash}</b>`, `slot <b id="tbSlot">${int(liveSlot())}</b>`, `TPS <b>${int(s?.net?.tps)}</b>`];
   if (c?.listed) parts.push(`$M1NT <b>${usd(c.price)}</b> <span class="${c.ch24 >= 0 ? 'up' : 'dn'}">${c.ch24 >= 0 ? '+' : ''}${num(c.ch24, 1)}%</span>`);
+  if (LIVE?.live) parts.unshift(`<i class="dot"></i><b>${LIVE.online.length}</b> mining`);
   $('#live').innerHTML = parts.map(p => `<span>${p}</span>`).join('');
 }
 function orbs() {
@@ -882,21 +1046,61 @@ function minimap() {
   const blink = Math.floor(Date.now() / 300) % 2;
   for (const r of rocks) { const [bx, by] = r.full.base, x = Math.round(60 + (bx - 160) * .32), y = Math.round(66 + (by - 112) * .5); mm.fillStyle = r.respawn ? '#6b6158' : vein?.rock === r.i ? (blink ? '#ffd25a' : '#e8a32a') : (r.i === active && blink ? '#ffffff' : '#ffff00'); mm.fillRect(x - 2, y - 2, 4, 4); mm.fillStyle = '#000'; mm.fillRect(x - 2, y + 2, 4, 1); }
   const mx = Math.round(60 + (me.x - 160) * .32), my = Math.round(66 + (me.y - 112) * .5); mm.fillStyle = '#ffffff'; mm.fillRect(mx - 1, my - 1, 3, 3);
+  spots.forEach(o => { mm.fillStyle = '#7fb2ff'; mm.fillRect(Math.round(60 + (o.x - 160) * .32) - 1, Math.round(66 + (o.y - 112) * .5) - 1, 3, 3); });
   if (S.pet) { mm.fillStyle = '#b07cff'; mm.fillRect(Math.round(60 + (pet.x - 160) * .32), Math.round(66 + (pet.y - 112) * .5), 2, 2); }
   mm.restore(); mm.fillStyle = '#c8b8a0'; mm.font = '10px Silk, monospace'; mm.fillText('N', 56, 12);
 }
+// ---------------- the live mine: a heartbeat every 15 seconds says who you are and where you dig, and brings back everyone else
+let hbSoon = 0, lastFeedT = 0, tickQ = [], tickBusy = false, myEmote = null, myEmoteUntil = 0;
+const EMOTES = ['gm', 'gn', 'gg', 'lfg', 'wagmi', 'hodl', 'nice', 'rich', 'ty', 'o7'];
+function emote(w) {
+  w = String(w || '').toLowerCase(); if (!EMOTES.includes(w)) return msg(`Emotes: ${EMOTES.join(', ')}`, 'r', false, 'board');
+  myEmote = w; myEmoteUntil = Date.now() + 8000; S.flags.emote = 1; placeTags(); clearTimeout(hbSoon); hbSoon = setTimeout(heartbeat, 300); msg(`You say ${w}.`, 'c', false, 'board'); checkQuests();
+}
+async function heartbeat() {
+  if (document.hidden) return;
+  const finds = S.feedQ.slice(0, 8);
+  try {
+    const r = await api('live', {}, { id: S.cid, name: S.name, rock: active ?? -1, lv: level(S.xp), head: S.up.head, hands: hands(), hps: busy ? Math.round(hps) : 0, finds, emote: Date.now() < myEmoteUntil ? myEmote : null });
+    if (finds.length) { S.feedQ = S.feedQ.slice(finds.length); save(); }
+    const was = !!LIVE?.rush?.active; LIVE = r;
+    if (r.live) {
+      const fresh = r.feed.filter(f => f.t > lastFeedT && !S.proofs.some(p => p.h.startsWith(f.h)));
+      if (lastFeedT) fresh.reverse().forEach(f => { tickQ.push(f); msg(`${f.name} found ${G(f.grade) ? (/^[aeiou]/.test(G(f.grade).name) ? 'an ' : 'a ') + G(f.grade).name : f.grade} · ${f.bits} zero bits`, G(f.grade)?.cls || 'y', false, 'board'); });
+      lastFeedT = Math.max(lastFeedT || 1, ...r.feed.map(f => f.t)); runTicker();
+      if (r.online.some(o => !o.self) && active !== null) S.flags.company = 1;
+      if (r.rush.active && !was) { gm('GOLD RUSH! The mine found so many gems that every find pays double, for everyone.', 'g'); toast('Gold Rush: double loot'); sfx('rush'); flash('core'); }
+      if (!r.rush.active && was) gm('The Gold Rush is over.', 'd');
+    }
+  } catch (e) { LIVE = { live: false, why: friendly(e) }; }
+  rushBar(); topbar(getState()); paint(['live']); placeTags(); checkQuests();
+}
+function rushBar() { const b = $('#rushBar'), R = LIVE?.rush; if (R?.active) { b.hidden = false; b.innerHTML = `<b>Gold Rush</b> double loot for everyone · ${R.n} gems in 10 min`; } else b.hidden = true; }
+function runTicker() {
+  if (tickBusy || !tickQ.length) return; tickBusy = true; const f = tickQ.shift(), T = $('#ticker');
+  T.innerHTML = `<span>${G(f.grade) ? ico(f.grade) : ''}<b>${esc(f.name)}</b> found ${G(f.grade)?.name || esc(f.grade)} · ${f.bits} bits</span>`; T.classList.add('on');
+  setTimeout(() => { T.classList.remove('on'); setTimeout(() => { tickBusy = false; runTicker(); }, 400); }, 4200);
+}
+function placeTags() {
+  const box = $('#tags'), v = cv.getBoundingClientRect(), k = Math.max(v.width / cv.width, v.height / cv.height), ox = (v.width - cv.width * k) / 2, oy = (v.height - cv.height * k) / 2;
+  const at = (x, y) => `left:${Math.round(ox + (x + X0) * k)}px;top:${Math.round(oy + y * k)}px`;
+  box.innerHTML = spots.map(o => `<span class="tag" style="${at(o.x, o.y - 50)}">${esc(o.name)} <i>${o.lv}</i></span>${o.emote ? `<span class="bub" style="${at(o.x, o.y - 62)}">${esc(o.emote)}</span>` : ''}`).join('') +
+    (Date.now() < myEmoteUntil ? `<span class="bub me" style="${at(me.x, me.y - 60)}">${esc(myEmote)}</span>` : '');
+}
+setInterval(heartbeat, 15000); setTimeout(heartbeat, 1200); setInterval(placeTags, 500); addEventListener('resize', placeTags);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) heartbeat(); });
 let lastTick = Date.now();
 setInterval(() => {
   const now = Date.now(), dt = now - lastTick; lastTick = now;
   if (active !== null && !document.hidden) { S.mineMs += dt; sess.mined += dt; }
   orbs(); xpTrack(); const t = $('#tbSlot'); if (t) t.textContent = int(liveSlot()); const sl = $('#slotLive'); if (sl) sl.textContent = int(liveSlot()); const dt2 = $('#dropT'), s = getState(); if (dt2 && s?.nextDrop) dt2.textContent = clock(s.nextDrop - Date.now()); if (active !== null || vein) minimap();
 }, 500);
-setInterval(() => { minimap(); if (current === 'stats') paint(['stats']); acts(); checkQuests(); save(); }, 5000);
+setInterval(() => { minimap(); if (current === 'stats') paint(['stats']); if (current === 'quests') paint(['quests']); acts(); dailyInit(); checkQuests(); save(); }, 5000);
 onState(s => { if (s?.sol?.usd) { priceHist.push({ t: Date.now(), sol: s.sol.usd }); if (priceHist.length > 300) priceHist.shift(); } topbar(s); orbs(); paint(['net', 'swap', 'drop', 'chart']); });
 pollState(12000);
 
 // ---------------- first words
-paint(); minimap(); hoverLine(); acts(); xpTrack(); checkQuests();
+dailyInit(); paint(); minimap(); hoverLine(); acts(); xpTrack(); checkQuests();
 const lv0 = level(S.xp);
 gm('Welcome to the M1NT mine.', 'g');
 gm(S.xp ? `Welcome back${S.name ? ', ' + S.name : ''}. Mining level ${lv0}, ${head().name}, ${S.inv.length} item${S.inv.length === 1 ? '' : 's'} in your pack.` : `${TOUCH ? 'Tap' : 'Click'} a rock to start mining. Every swing runs real SHA-256 proof of work in your browser.`, 'y');

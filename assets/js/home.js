@@ -127,6 +127,18 @@ onState(s => {
 setInterval(() => { paintTape(); const s = getState(), c = $('#chipDrop'); if (c && s?.nextDrop) c.textContent = clock(s.nextDrop - Date.now()); ring(); }, 1000);
 pollState(15000);
 
+// ---------------- the mine, live: how many are digging right now (shown above the button in section 05)
+async function liveStrip() {
+  const el = $('#liveStrip'); if (!el) return;
+  try {
+    const r = await fetch('/api/live', { cache: 'no-store' }).then(x => x.json()); if (!r?.ok || !r.live) { el.hidden = true; return; }
+    const n = r.online.length, top = r.feed[0];
+    el.innerHTML = `<i></i><b>${n}</b> ${n === 1 ? 'miner' : 'miners'} digging now${r.hps ? ` · <b>${compact(r.hps)}</b> H/s` : ''} · Gold Rush <b>${r.rush.active ? 'on' : `${r.rush.n}/${r.rush.goal}`}</b>${top ? ` · last gem: <b>${esc(top.name)}</b>, ${top.bits} bits` : ''}`;
+    el.hidden = false;
+  } catch { el.hidden = true; }
+}
+liveStrip(); setInterval(() => { if (!document.hidden) liveStrip(); }, 20000);
+
 // ---------------- the contract address, once there is one (from the page config, or the server's M1NT_CA)
 let caShown = '';
 function paintCa(s) {
