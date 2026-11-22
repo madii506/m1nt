@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>M1NT</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0d0a08">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/fav-32.png">
+<link rel="stylesheet" href="/assets/css/m1nt.css?v=1">
+<style>
+  html,body{height:100%}
+  body{display:grid;place-items:center;background:#070504;overflow:hidden}
+  .cave{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;opacity:.32;filter:saturate(.7)}
+  .lost{position:relative;text-align:center;padding:24px 16px;max-width:560px}
+  .lost .code{font:clamp(84px,18vw,150px)/.9 Silk,monospace;color:var(--gold);text-shadow:0 6px 0 #6b3a0c,0 10px 0 #000;letter-spacing:.04em}
+  .lost h1{margin:18px 0 8px;font:clamp(20px,4vw,26px)/1.2 Silk,monospace;color:#fff;letter-spacing:.03em}
+  .lost p{margin:0 auto 26px;max-width:40ch;color:var(--dim);font:22px/1.25 VT,monospace}
+  .lost .row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+  .torch{position:absolute;top:28px;width:27px;height:39px}
+  .torch.l{left:-34px}.torch.r{right:-34px}
+  @media (max-width:520px){.torch{display:none}}
+</style>
+</head>
+<body>
+<img class="cave px" src="/assets/img/cave.png" alt="">
+<main class="lost">
+  <canvas class="torch l px" width="9" height="13"></canvas><canvas class="torch r px" width="9" height="13"></canvas>
+  <div class="code">404</div>
+  <h1>This tunnel caved in.</h1>
+  <p>Nothing was ever mined here. The page you dug for does not exist.</p>
+  <div class="row"><a class="btn" href="/mine">Enter the mine</a><a class="btn ghost" href="/">Back to the surface</a></div>
+</main>
+<script type="module">
+  import { drawFlame } from '/assets/js/lib.js?v=1';
+  const cs = [...document.querySelectorAll('canvas.torch')]; let f = 0;
+  const tick = () => { cs.forEach((c, i) => { const g = c.getContext('2d'); g.clearRect(0, 0, 9, 13); drawFlame(g, 0, 0, (f + i) % 3); }); f++; };
+  tick(); if (!matchMedia('(prefers-reduced-motion: reduce)').matches) setInterval(tick, 140);
+</script>
+</body>
+</html>

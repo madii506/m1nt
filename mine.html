@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" class="loading term">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>M1NT</title>
+<meta name="description" content="The M1NT terminal: mine with real proof of work, connect a wallet, swap into hSOL, watch the hourly drop.">
+<meta name="theme-color" content="#0d0a08">
+<meta property="og:title" content="M1NT — the mine">
+<meta property="og:image" content="/assets/img/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/fav-32.png">
+<link rel="apple-touch-icon" href="/assets/img/fav-180.png">
+<link rel="stylesheet" href="/assets/css/m1nt.css?v=1">
+<link rel="stylesheet" href="/assets/css/mine.css?v=1">
+<script>document.documentElement.classList.add('js');window.CONFIG={ca:'',x:'',buy:'https://pump.fun/coin/',chart:'https://dexscreener.com/solana/'}</script>
+</head>
+<body>
+<div class="load" id="load" aria-hidden="true">
+  <div class="stage">
+    <canvas class="t l px" width="9" height="13"></canvas>
+    <img class="mark px" src="/assets/img/fav-64.png" alt="" width="96" height="96">
+    <canvas class="t r px" width="9" height="13"></canvas>
+    <div class="bar"><i></i><b></b></div>
+  </div>
+</div>
+
+<header class="tbar">
+  <a class="home" href="/" aria-label="M1NT home"><img class="px" src="/assets/img/fav-32.png" alt="" width="28" height="28"><span>M1NT</span></a>
+  <div class="live" id="live"></div>
+  <button class="btn sm" id="connectBtn" type="button">Connect</button>
+</header>
+
+<main class="client">
+  <section class="view" id="view" aria-label="The mine">
+    <canvas id="game" class="px" width="320" height="200"></canvas>
+    <div class="hover" id="hoverText" aria-hidden="true"></div>
+    <div class="drops" id="xpDrops" aria-hidden="true"></div>
+    <div class="menu" id="menu" hidden><b>Choose option</b><div id="menuItems"></div></div>
+    <div class="lvl" id="lvlUp" hidden></div>
+    <div class="swing" id="swingBar" aria-hidden="true"><i></i></div>
+  </section>
+
+  <aside class="side">
+    <div class="orbs">
+      <canvas id="minimap" class="px" width="120" height="120" aria-label="Map of the mine"></canvas>
+      <div class="orbset">
+        <div class="orb" id="orbHash" title="Your hash rate"><i style="--c:#ffd25a"></i><b>—</b><span>H/s</span></div>
+        <div class="orb" id="orbApy" title="hSOL staking APY"><i style="--c:#19f0a0"></i><b>—</b><span>APY</span></div>
+        <div class="orb" id="orbDrop" title="Next hourly drop"><i style="--c:#9b4dff"></i><b>—</b><span>Drop</span></div>
+        <div class="orb" id="orbTps" title="Solana transactions per second"><i style="--c:#00ffff"></i><b>—</b><span>TPS</span></div>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs" role="tablist">
+      <button role="tab" data-tab="inv" aria-selected="true">Pack</button>
+      <button role="tab" data-tab="skill">Skill</button>
+      <button role="tab" data-tab="wallet">Wallet</button>
+      <button role="tab" data-tab="swap">Swap</button>
+      <button role="tab" data-tab="drop">Drop</button>
+      <button role="tab" data-tab="holders">Holders</button>
+      <button role="tab" data-tab="net">Chain</button>
+      <button role="tab" data-tab="board">Board</button>
+      <button role="tab" data-tab="opts">Options</button>
+    </nav>
+    <div class="panel" id="panel" role="tabpanel"></div>
+  </aside>
+
+  <section class="chat" aria-label="Messages and command line">
+    <div class="log" id="log" aria-live="polite"></div>
+    <form class="cmd" id="cmdForm" autocomplete="off">
+      <label for="cmd">M1NT&gt;</label><input id="cmd" spellcheck="false" placeholder="type help" maxlength="140"><button class="btn sm" type="submit">Run</button>
+    </form>
+  </section>
+</main>
+
+<div class="modal" id="walletModal" hidden>
+  <div class="sheet"><h3>Connect a wallet</h3><div id="walletList"></div><button class="btn sm ghost" type="button" data-close>Close</button></div>
+</div>
+<script type="module" src="/assets/js/mine.js?v=1"></script>
+</body>
+</html>

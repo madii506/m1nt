@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en" class="loading">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>M1NT</title>
+<meta name="description" content="Mine a coin. Earn hSOL. M1NT pays its holders every hour in encrypted hSOL.">
+<meta name="theme-color" content="#0d0a08">
+<meta property="og:type" content="website">
+<meta property="og:title" content="M1NT">
+<meta property="og:description" content="Mine a coin. Earn hSOL. Paid to holders every hour, encrypted.">
+<meta property="og:image" content="/assets/img/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="M1NT">
+<meta name="twitter:image" content="/assets/img/og.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/fav-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/img/fav-64.png">
+<link rel="apple-touch-icon" href="/assets/img/fav-180.png">
+<link rel="preload" as="image" href="/assets/img/hero-world.png">
+<link rel="preload" as="font" type="font/ttf" href="/assets/fonts/Silkscreen-Regular.ttf" crossorigin>
+<link rel="stylesheet" href="/assets/css/m1nt.css?v=1">
+<script>document.documentElement.classList.add('js');window.CONFIG={ca:'',x:'',buy:'https://pump.fun/coin/',chart:'https://dexscreener.com/solana/'}</script>
+</head>
+<body>
+<div class="load" id="load" aria-hidden="true">
+  <div class="stage">
+    <canvas class="t l px" width="9" height="13"></canvas>
+    <img class="mark px" src="/assets/img/fav-64.png" alt="" width="96" height="96">
+    <canvas class="t r px" width="9" height="13"></canvas>
+    <div class="bar"><i></i><b></b></div>
+  </div>
+</div>
+<canvas id="life" aria-hidden="true"></canvas>
+
+<header class="hero" id="top">
+  <canvas id="world" class="px" aria-hidden="true"></canvas>
+  <div class="top">
+    <h1 class="sr">M1NT — mine a coin, earn hSOL</h1>
+    <img class="word" src="/assets/img/word.png" alt="M1NT" width="1100" height="320">
+    <div class="cta">
+      <a class="btn" href="/mine" id="enter">Enter the mine</a>
+      <a class="btn ghost" href="#vein">How it works</a>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="capill" id="caPill" hidden></div>
+  </div>
+  <a class="hint" href="#vein" aria-label="Scroll to how it works"><i></i></a>
+</header>
+
+<div class="tape" aria-label="Live numbers"><div class="run" id="run"></div></div>
+
+<main>
+<section class="band" id="vein">
+  <div class="wrap">
+    <p class="eyebrow rv">01 — The vein</p>
+    <h2 class="rv" style="--d:1">Mine a coin. <em>Earn hSOL.</em></h2>
+    <p class="lede rv" style="--d:2">Every trade of $M1NT pays a creator fee. The mine turns those fees into hSOL, Helius's staked SOL, and pays it to the people holding the coin. Every hour, encrypted.</p>
+    <div class="pipe">
+      <div class="rail" aria-hidden="true"><span class="ore"></span><span class="ore t" style="animation-delay:-3s"></span><span class="ore" style="animation-delay:-6s"></span></div>
+      <div class="st rv" style="--d:2"><div class="ico"><i style="background-position:-272px 0"></i></div><div><span class="k">01</span><h3>Trades</h3><p>Every buy and sell of $M1NT pays the creator fee.</p></div></div>
+      <div class="st rv" style="--d:3"><div class="ico"><i style="background-position:-68px 0"></i></div><div><span class="k">02</span><h3>Fees</h3><p>Claimed from the pump.fun vaults at the top of each hour.</p></div></div>
+      <div class="st rv" style="--d:4"><div class="ico"><i style="background-position:-204px 0"></i></div><div><span class="k">03</span><h3>hSOL</h3><p>Swapped into hSOL, so the pot keeps earning staking yield.</p></div></div>
+      <div class="st rv" style="--d:5"><div class="ico"><i style="background-position:-136px 0"></i></div><div><span class="k">04</span><h3>Shield</h3><p>Moved into Solana Privacy Rings, where amounts go dark.</p></div></div>
+      <div class="st rv" style="--d:6"><div class="ico"><i style="background-position:-340px 0"></i></div><div><span class="k">05</span><h3>Holders</h3><p>Paid out pro rata to every holder with a private wallet.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="drop">
+  <div class="wrap">
+    <p class="eyebrow rv">02 — The drop</p>
+    <h2 class="rv" style="--d:1">Every hour, <em>on the hour.</em></h2>
+    <div class="drop">
+      <div class="ring rv" id="ring" style="--d:2"><div class="mid"><div><b id="ringT">—</b><span id="ringL">to the next hour</span></div></div></div>
+      <div>
+        <ol class="steps" id="steps">
+          <li class="rv" style="--d:2"><span class="tm">:00</span><div><h3>Claim</h3><p>The engine collects the creator fees from both pump.fun vaults.</p></div></li>
+          <li class="rv" style="--d:3"><span class="tm">:01</span><div><h3>Stake</h3><p>The SOL is swapped into hSOL.</p></div></li>
+          <li class="rv" style="--d:4"><span class="tm">:02</span><div><h3>Shield</h3><p>The hSOL goes into the Privacy Rings default ring.</p></div></li>
+          <li class="rv" style="--d:5"><span class="tm">:03</span><div><h3>Send</h3><p>Confidential transfers go to every holder with a private wallet, sized by how much $M1NT they hold.</p></div></li>
+        </ol>
+        <span class="status rv" id="engine" style="--d:6"><i></i><span>The engine starts at launch</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="cipher">
+  <div class="wrap">
+    <p class="eyebrow rv">03 — Encrypted</p>
+    <h2 class="rv" style="--d:1">The chain sees a payout. <span class="p">Only you see the amount.</span></h2>
+    <p class="lede rv" style="--d:2">Payouts are confidential transfers on Solana Privacy Rings, live on mainnet since November 2026. Sender and receiver stay public. The asset and the amount are encrypted.</p>
+    <div class="cipher">
+      <div class="card rv" style="--d:2"><h3>On chain <b id="encTag">encrypted</b></h3>
+        <div class="rowk"><span>from</span><b>mine engine</b></div>
+        <div class="rowk"><span>to</span><b id="encTo">your wallet</b></div>
+        <div class="rowk"><span>asset</span><b class="enc" data-scr="7">▒▒▒▒▒▒▒</b></div>
+        <div class="rowk"><span>amount</span><b class="enc" data-scr="12">▒▒▒▒▒▒▒▒▒▒▒▒</b></div>
+      </div>
+      <div class="card rv" style="--d:3"><h3>Your wallet <b id="decTag">decrypted · example</b></h3>
+        <div class="rowk"><span>from</span><b>mine engine</b></div>
+        <div class="rowk"><span>to</span><b>you</b></div>
+        <div class="rowk"><span>asset</span><b class="dec">hSOL</b></div>
+        <div class="rowk"><span>amount</span><b class="dec" id="decAmt">0.021403 hSOL</b></div>
+      </div>
+    </div>
+    <div class="facts">
+      <div class="rv" style="--d:2"><b>Addresses stay public</b><p>Anyone can see that the mine paid a wallet. Nobody can see how much.</p></div>
+      <div class="rv" style="--d:3"><b>Only you decrypt</b><p>Your keys open your balance. A viewing key can give read-only access if you choose.</p></div>
+      <div class="rv" style="--d:4"><b>Audited, on mainnet</b><p>Privacy Rings is built by Helius and audited by Certora, OtterSec and ZK Security.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="cut">
+  <div class="wrap">
+    <p class="eyebrow rv">04 — Your cut</p>
+    <h2 class="rv" style="--d:1">What is <em>your cut?</em></h2>
+    <div class="calc">
+      <div class="rv" style="--d:2">
+        <label class="field"><span>Your $M1NT</span><input id="cTok" inputmode="decimal" autocomplete="off" placeholder="5,000,000"></label>
+        <div class="quick" id="cQuick"><button data-p=".001">0.1%</button><button data-p=".005">0.5%</button><button data-p=".01">1%</button><button data-p=".02">2%</button></div>
+        <label class="field"><span>Daily volume, USD</span><input id="cVol" inputmode="decimal" autocomplete="off" placeholder="250,000"></label>
+        <label class="field"><span>Creator fee, %</span><input id="cFee" inputmode="decimal" autocomplete="off" placeholder="0.30"></label>
+      </div>
+      <div class="out rv" style="--d:3" aria-live="polite">
+        <div class="unit">Your hSOL per day</div>
+        <div class="big" id="cBig">—</div>
+        <div class="unit" id="cUsd">fill in the three fields</div>
+        <ul class="math" id="cMath"></ul>
+        <p class="note">An estimate at today's pace, not a promise. Supply is 1,000,000,000, the pump.fun standard; SOL and hSOL prices are live.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="mine">
+  <div class="wrap">
+    <p class="eyebrow rv">05 — The mine</p>
+    <h2 class="rv" style="--d:1">Swing the pickaxe <em>yourself.</em></h2>
+    <div class="preview">
+      <div class="screen rv" style="--d:2"><canvas id="peek" class="px" width="320" height="200" aria-hidden="true"></canvas><span class="tag">Mine <b>hSOL rock</b></span></div>
+      <div class="rv" style="--d:3">
+        <ul class="feat">
+          <li><span><b>Real mining.</b> Your browser hashes SHA-256 proofs of work; rarer hashes give rarer ore.</span></li>
+          <li><span><b>Skills and inventory.</b> XP, levels, 28 slots of dust, ore, gems and crystals.</span></li>
+          <li><span><b>Wallet.</b> Connect Phantom, Solflare or Backpack to see your SOL, hSOL and $M1NT.</span></li>
+          <li><span><b>Exchange.</b> Swap SOL into hSOL through Jupiter, signed in your own wallet.</span></li>
+          <li><span><b>The drop.</b> Next hour's payout plan, read live from the chain.</span></li>
+          <li><span><b>Miners board.</b> Submit your finds; the server re-hashes every one.</span></li>
+        </ul>
+        <a class="btn" href="/mine">Enter the mine</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="faq">
+  <div class="wrap">
+    <p class="eyebrow rv">06 — Questions</p>
+    <h2 class="rv" style="--d:1">Asked at the <em>mine shaft.</em></h2>
+    <div class="faq rv" style="--d:2">
+      <details><summary>What is M1NT?</summary><p>A coin with a mine attached. Its creator fees are turned into hSOL and paid to the people holding it, every hour, as encrypted transfers.</p></details>
+      <details><summary>What is hSOL?</summary><p>Helius Staked SOL: SOL staked with Helius's validator, held as a token. It is worth a little more SOL every epoch, so a payout keeps growing while you hold it. Right now 1 hSOL = <b id="faqRate">—</b> SOL.</p></details>
+      <details><summary>How often are payouts?</summary><p>Every hour, at the top of the UTC hour, once the engine is running. Each drop is split by how much $M1NT each wallet holds at that moment.</p></details>
+      <details><summary>Who can see what I was paid?</summary><p>Everyone can see that the mine paid your wallet. Only you can decrypt the asset and the amount.</p></details>
+      <details><summary>Do I need to do anything?</summary><p>Two things, once. Hold $M1NT in a wallet you control, and set up a Privacy Rings private wallet for that address: an encrypted transfer can only go to a private wallet, not a plain address. Holders without one, and program accounts like pools, curves and exchange vaults, are skipped that hour and their share goes to the holders who can receive it.</p></details>
+      <details><summary>Is the mining game real?</summary><p>Yes. Your browser computes real SHA-256 proofs of work, and anyone can re-check any find. It earns XP and a place on the miners board, not tokens. Holding $M1NT is what earns hSOL.</p></details>
+      <details><summary>Is the token live?</summary><p id="faqCa">Not yet. When it is, the contract address appears right here. Anyone posting one before that is not us.</p></details>
+      <details><summary>What can go wrong?</summary><p>No trading means no fees and no drops. hSOL moves with SOL's price. Privacy Rings is new software. This is a memecoin: only put in what you can lose.</p></details>
+    </div>
+    <div class="end rv" style="--d:3"><a class="btn" href="/mine">Enter the mine</a><a class="btn ghost" href="#top">Back up</a></div>
+  </div>
+</section>
+</main>
+<script type="module" src="/assets/js/home.js?v=1"></script>
+</body>
+</html>
