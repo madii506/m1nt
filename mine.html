@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/img/fav-32.png">
 <link rel="apple-touch-icon" href="/assets/img/fav-180.png">
 <link rel="stylesheet" href="/assets/css/m1nt.css?v=3">
-<link rel="stylesheet" href="/assets/css/mine.css?v=4">
+<link rel="stylesheet" href="/assets/css/mine.css?v=5">
 <script>document.documentElement.classList.add('js');window.CONFIG={ca:'',x:'',buy:'https://pump.fun/coin/',chart:'https://dexscreener.com/solana/'}</script>
 </head>
 <body>
@@ -29,6 +29,7 @@
 <main class="client">
   <section class="view" id="view" aria-label="The mine">
     <canvas id="game" class="px" width="320" height="200"></canvas>
+    <div class="camctl" id="camCtl" hidden><button type="button" data-c="l" title="Turn left (←)" aria-label="Turn the camera left">&lt;</button><button type="button" data-c="r" title="Turn right (→)" aria-label="Turn the camera right">&gt;</button><button type="button" data-c="i" title="Zoom in (↑)" aria-label="Zoom in">+</button><button type="button" data-c="o" title="Zoom out (↓)" aria-label="Zoom out">-</button></div>
     <div class="hover" id="hoverText" aria-hidden="true"></div>
     <div class="xpt" id="xpTrack" aria-hidden="true"></div>
     <div class="vein" id="veinBar" hidden></div>
@@ -92,6 +93,6 @@
 <div class="modal" id="walletModal" hidden>
   <div class="sheet"><h3>Connect a wallet</h3><div id="walletList"></div><button class="btn sm ghost" type="button" data-close>Close</button></div>
 </div>
-<script type="module" src="/assets/js/mine.js?v=4"></script>
+<script type="module" src="/assets/js/mine.js?v=5"></script>
 </body>
 </html>
