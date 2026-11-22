@@ -193,26 +193,14 @@ function calc() {
 }
 calc();
 
-// ---------------- 05: a peek into the mine (the terminal's own cave, torches, sparkles, one rock being worked)
+// ---------------- 05: a peek into the mine: twenty frames of the terminal's own 3D mine, rendered from the real scene
 (async function peek() {
-  const c = $('#peek'); if (!c || !ART) return; const x = c.getContext('2d');
-  const [cave, rocks] = await Promise.all([loadImg('/assets/img/cave.png'), loadImg('/assets/img/rocks.png')]).catch(() => []); if (!cave) return;
-  const full = ART.rocks.frames.filter(f => f.ore).sort((a, b2) => a.z - b2.z), sp = [], du = []; let on = false, lt = 0, sw = 0;
+  const c = $('#peek'); if (!c) return; const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+  const sheet = await loadImg('/assets/img/mine3d.png?v=1').catch(() => null); if (!sheet) return;
+  const n = Math.max(1, Math.round(sheet.width / 320)); let on = false, shown = -1;
   new IntersectionObserver(es => { on = es[0].isIntersecting; }).observe(c);
-  const target = full.find(f => f.rock === 3) || full[0];
-  (function tick(t) {
-    requestAnimationFrame(tick); if (!on || t - lt < 40) return; const dt = (t - lt) / 1000; lt = t;
-    x.drawImage(cave, 0, 0);
-    ART.cave.torches.forEach(([tx2, ty2], i) => drawFlame(x, Math.round(tx2) - 4, Math.round(ty2) - 10, (Math.floor(t / 130) + i) % 3));
-    for (const f of full) x.drawImage(rocks, f.sx, 0, f.w, f.h, f.ox, f.oy, f.w, f.h);
-    if (Math.random() < .3) { const f = full[Math.floor(Math.random() * full.length)], p = f.tips[Math.floor(Math.random() * f.tips.length)]; if (p) sp.push({ x: p[0], y: p[1], t: 0 }); }
-    // a pickaxe swinging at one rock
-    sw += dt; const a = Math.sin(sw * 7.5), hx = target.ox + target.w * .5, hy = target.oy + 6;
-    x.save(); x.translate(hx + 10, hy - 8); x.rotate(-.5 + a * .6); x.fillStyle = '#7a4a22'; x.fillRect(-1, -14, 2, 15); x.fillStyle = '#8b6dff'; x.fillRect(-7, -16, 7, 2); x.fillStyle = '#19f0a0'; x.fillRect(0, -16, 7, 2); x.fillStyle = '#ffd25a'; x.fillRect(-1, -17, 2, 3); x.restore();
-    if (a > .97 && Math.random() < .5) for (let i = 0; i < 5; i++) du.push({ x: hx, y: hy + 6, vx: rnd(-20, 20), vy: rnd(-30, -8), l: .5 });
-    for (let i = sp.length - 1; i >= 0; i--) { const s = sp[i]; s.t += dt; sparkle(x, s.x, s.y, [0, 1, 2, 1, 0][Math.min(4, Math.floor(s.t / .08))]); if (s.t > .4) sp.splice(i, 1); }
-    for (let i = du.length - 1; i >= 0; i--) { const d = du[i]; d.l -= dt; d.vy += 120 * dt; d.x += d.vx * dt; d.y += d.vy * dt; x.fillStyle = '#9b8f84'; x.fillRect(Math.round(d.x), Math.round(d.y), 1, 1); if (d.l <= 0) du.splice(i, 1); }
-  })(0);
+  x.drawImage(sheet, 0, 0, 320, 200, 0, 0, 320, 200);
+  (function tick(t) { requestAnimationFrame(tick); if (!on || reduced) return; const k = Math.floor(t / 62) % n; if (k === shown) return; shown = k; x.drawImage(sheet, k * 320, 0, 320, 200, 0, 0, 320, 200); })(0);
 })();
 
 reveals();

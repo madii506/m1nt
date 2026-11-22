@@ -6,6 +6,8 @@ const caNow = () => CFG.ca || getState()?.config?.ca || '', xNow = () => CFG.x |
 const TOUCH = matchMedia('(pointer:coarse)').matches;
 const rnd = (a, b) => a + Math.random() * (b - a), irnd = (a, b) => Math.floor(rnd(a, b + 1));
 
+const WANT3D = (() => { try { return (JSON.parse(localStorage.getItem('m1nt:save') || '{}').view || '3d') === '3d'; } catch { return true; } })();
+const world3d = WANT3D ? import('./world3d.js?v=1').catch(() => null) : null;   // the 3D mine loads while the pixel art does
 const [ART, caveImg, rocksImg, minerImg, iconsImg] = await Promise.all([fetch('/assets/data/art.json').then(r => r.json()), loadImg('/assets/img/cave.png'), loadImg('/assets/img/rocks.png'), loadImg('/assets/img/miner.png'), loadImg('/assets/img/icons.png')]);
 
 // ---------------- the rules of the mine (the server re-checks the grades)
@@ -46,7 +48,7 @@ const message = (rock, seed, nonce) => `m1nt|${rock}|${seed}|${nonce}`;
 const KEY = 'm1nt:save';
 const zero = () => ({ core: 0, crystal: 0, gem: 0, ore: 0, dust: 0 });
 const blank = () => ({ v: 2, xp: 0, swings: 0, hashes: 0, fails: 0, finds: zero(), best: null, inv: [], bank: zero(), proofs: [], sent: {}, name: '', seed: '', nonce: 0,
-  auto: true, fx: !reduced, autoBank: false, autoSubmit: false, up: { head: 0, hands: 0 }, cpu: 0, qdone: {}, qp: 0, pet: 0, flags: {}, mineMs: 0, banked: 0, fullPacks: 0, bitsHist: {}, streak: { day: '', n: 0 }, since: Date.now(), cid: Math.random().toString(36).slice(2, 14), sound: false, vol: .5, daily: null, feedQ: [] });
+  auto: true, fx: !reduced, autoBank: false, autoSubmit: false, up: { head: 0, hands: 0 }, cpu: 0, qdone: {}, qp: 0, pet: 0, flags: {}, mineMs: 0, banked: 0, fullPacks: 0, bitsHist: {}, streak: { day: '', n: 0 }, since: Date.now(), cid: Math.random().toString(36).slice(2, 14), sound: false, vol: .5, daily: null, feedQ: [], view: '3d', shirt: null });
 let S = blank(); try { S = { ...blank(), ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch {}
 { const B = blank(); for (const k of ['finds', 'bank', 'up', 'flags', 'streak', 'bitsHist', 'qdone']) S[k] = { ...B[k], ...(S[k] || {}) }; if (!S.cid) S.cid = B.cid; if (!Array.isArray(S.feedQ)) S.feedQ = []; }
 const slug = n => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 12);
@@ -74,9 +76,24 @@ const sess = { t0: Date.now(), xp0: S.xp, hashes0: S.hashes, finds0: 0, mine0: 0
 const totalFinds = () => Object.values(S.finds).reduce((a, b) => a + b, 0); sess.finds0 = totalFinds();
 const rateHist = [], priceHist = [];
 
+// ---------------- the world: a big 3D cavern when this browser can draw one, the 2D pixel cave otherwise (or when you pick it in Options)
+const SHIRTS = [['#7a3ae6', 'Amethyst'], ['#14c985', 'Mint'], ['#e0682a', 'Ember'], ['#2a7de0', 'Cobalt'], ['#e0b52a', 'Gold'], ['#d9468f', 'Rose']];
+const PICKS = { copper: [0xc27a3a, 0xe8a96a], iron: [0x9aa2aa, 0xd0d6dc], steel: [0xc8d0d8, 0xffffff], cobalt: [0x3a6ee0, 0x8fb4ff], obsidian: [0x3a2a4a, 0x9b4dff], hsol: [0x9b4dff, 0x19f0a0] };
+const PLACES = { bank: 'bank chest', smith: 'smithy', board: 'miners board', core: 'hSOL core' };
+let W3 = null, hoverProp = null, bankOpenUntil = 0;
+try {
+  const mod = world3d && await world3d;
+  if (mod) W3 = mod.createWorld($('#view'), { shirts: SHIRTS.map(x => parseInt(x[0].slice(1), 16)),
+    onHover: h => { hoverRock = h?.kind === 'rock' ? rocks[h.i] : null; hoverProp = h?.kind === 'prop' ? h : null; hoverLine(); },
+    onPick: h => { closeMenu(); if (h.kind === 'rock') mine(h.i); else if (h.kind === 'prop') usePlace(h.id); else walkTo(h); },
+    onMenu: (e, h) => openMenu(e, h?.kind === 'rock' ? rockMenu(rocks[h.i]) : h?.kind === 'prop' ? [[`Use <span class="c">${cap(h.name)}</span>`, () => usePlace(h.id)], [`Examine <span class="c">${cap(h.name)}</span>`, () => examinePlace(h.id)]] : [['Walk here', () => walkTo(h)], ['Bank the pack', bankAll]]),
+    onHit: () => sfx('hit') });
+} catch { W3 = null; $('#view .w3d')?.remove(); }
+if (W3) { $('#view').classList.add('is3d'); if ($('#camCtl')) $('#camCtl').hidden = false; $$('#camCtl button').forEach(b => b.onclick = () => { const c = b.dataset.c; if (c === 'l') W3.turn(.45); else if (c === 'r') W3.turn(-.45); else W3.zoom(c === 'i' ? .8 : 1.25); }); }
+
 // ---------------- the cave and its rocks
 const cv = $('#game'), g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
-const rocks = [0, 1, 2, 3, 4].map(i => {
+const rocks = W3 ? Array.from({ length: W3.count }, (_, i) => ({ i, z: 0, left: irnd(3, 6), respawn: 0 })) : [0, 1, 2, 3, 4].map(i => {
   const full = ART.rocks.frames.find(f => f.rock === i && f.ore), empty = ART.rocks.frames.find(f => f.rock === i && !f.ore);
   const mask = f => { const c = document.createElement('canvas'); c.width = f.w; c.height = f.h; const x = c.getContext('2d'); x.drawImage(rocksImg, f.sx, 0, f.w, f.h, 0, 0, f.w, f.h); return x.getImageData(0, 0, f.w, f.h).data; };
   return { i, full, empty, z: full.z, left: irnd(3, 6), respawn: 0, mFull: mask(full), mEmpty: mask(empty) };
@@ -123,12 +140,14 @@ function tint(img, hue) {   // repaint the purple shirt (and pick) in another hu
 }
 const TINTS = [160, 22, 205, 48, 330].map(h => tint(minerImg, h));
 const nameHue = n => { let h = 0; for (const ch of String(n)) h = (h * 33 + ch.charCodeAt(0)) >>> 0; return h % TINTS.length; };
+const shirtOf = o => o.shirt != null && o.shirt >= 0 ? o.shirt % SHIRTS.length : 1 + nameHue(o.name);   // a miner who never picked a shirt gets one from their name
+const shirtImg = i => i > 0 ? TINTS[(i - 1) % TINTS.length] : minerImg, myImg = () => shirtImg(S.shirt ?? 0);
 let LIVE = null, spots = [];
 function otherSpots() {
   if (!LIVE?.live) return [];
-  const per = {}; return LIVE.online.filter(o => !o.self && o.rock >= 0 && o.rock <= 4).slice(0, 6).map((o, i) => {
-    const r = rocks[o.rock], k = per[o.rock] = (per[o.rock] ?? -1) + 1;
-    return { ...o, x: r.full.ox + r.full.w + 1 + k * 12, y: Math.round(r.full.base[1] + 3 + k * 2), z: r.z + .04 + k * .001, ph: i * .23, img: TINTS[nameHue(o.name)] };
+  const per = {}; return LIVE.online.filter(o => !o.self && o.rock >= 0).slice(0, 6).map((o, i) => {
+    const ri = o.rock % rocks.length, r = rocks[ri], k = per[ri] = (per[ri] ?? -1) + 1;
+    return { ...o, x: r.full.ox + r.full.w + 1 + k * 12, y: Math.round(r.full.base[1] + 3 + k * 2), z: r.z + .04 + k * .001, ph: i * .23, img: shirtImg(shirtOf(o)) };
   });
 }
 function drawOther(o, t) {
@@ -142,8 +161,9 @@ function drawMiner(t) {
   else if (active !== null) { const k = (chopPhase % .62) / .62; fi = k < .38 ? 0 : k < .55 ? 1 : 2; }
   const f = MF[fi], x = Math.round(me.x), y = Math.round(me.y) - bob;
   g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(x - 9, y - 1, 18, 2); g.fillRect(x - 6, y + 1, 12, 1);   // a hard pixel shadow
-  if (me.flip) { g.save(); g.translate(x, 0); g.scale(-1, 1); g.drawImage(minerImg, f.sx, f.sy, f.w, f.h, Math.round(f.rx), y + Math.round(f.ry), f.w, f.h); g.restore(); }
-  else g.drawImage(minerImg, f.sx, f.sy, f.w, f.h, x + Math.round(f.rx), y + Math.round(f.ry), f.w, f.h);
+  const img = myImg();
+  if (me.flip) { g.save(); g.translate(x, 0); g.scale(-1, 1); g.drawImage(img, f.sx, f.sy, f.w, f.h, Math.round(f.rx), y + Math.round(f.ry), f.w, f.h); g.restore(); }
+  else g.drawImage(img, f.sx, f.sy, f.w, f.h, x + Math.round(f.rx), y + Math.round(f.ry), f.w, f.h);
 }
 // the pet rock golem: a few pixels of stone with a crystal on its back, a step behind you
 const GOLEM = ['...aaa...', '..abbba..', '.abbbbbc.', '.abdbdbcc', '.abbbbba.', '..abbba..', '..aa.aa..'];
@@ -195,7 +215,6 @@ function draw(t, dt) {
   const actors = [{ z: me.z, f: () => { drawPet(t); drawMiner(t); } }, ...spots.map(o => ({ z: o.z, f: () => drawOther(o, t) }))].sort((a, b) => a.z - b.z); let ai = 0;
   for (const r of byDepth) {
     while (ai < actors.length && actors[ai].z < r.z) actors[ai++].f();
-    if (r.respawn && now > r.respawn) { r.respawn = 0; r.left = irnd(3, 6); burst(r, 10); }
     const f = r.respawn ? r.empty : r.full; g.drawImage(rocksImg, f.sx, 0, f.w, f.h, f.ox, f.oy, f.w, f.h);
   }
   while (ai < actors.length) actors[ai++].f();
@@ -217,8 +236,9 @@ function draw(t, dt) {
   for (let i = sparks.length - 1; i >= 0; i--) { const s = sparks[i]; s.t += dt; sparkle(g, s.x, s.y, [0, 1, 2, 1, 0][Math.min(4, Math.max(0, Math.floor(s.t / .085)))], s.c || '#fff'); if (s.t > .42) sparks.splice(i, 1); }
   for (let i = chips.length - 1; i >= 0; i--) { const c = chips[i]; c.l -= dt; c.vy += 150 * dt; c.x += c.vx * dt; c.y += c.vy * dt; g.fillStyle = c.c; g.fillRect(Math.round(c.x), Math.round(c.y), 1, 1); if (c.l <= 0) chips.splice(i, 1); }
   for (let i = fireworks.length - 1; i >= 0; i--) { const p = fireworks[i]; p.l -= dt; p.vy += 40 * dt; p.x += p.vx * dt; p.y += p.vy * dt; g.fillStyle = p.c; g.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); if (p.l <= 0) fireworks.splice(i, 1); }
-  if (busy) { const k = Math.min(1, (performance.now() - swingStart) / Math.max(SWING_MS, lastSwingMs || SWING_MS)); $('#swingBar i').style.width = (k * 100).toFixed(1) + '%'; }
 }
+function refill() { const now = Date.now(); for (const r of rocks) if (r.respawn && now > r.respawn) { r.respawn = 0; r.left = irnd(3, 6); burst(r, 10); } }
+function swingTick() { if (busy) { const k = Math.min(1, (performance.now() - swingStart) / Math.max(SWING_MS, lastSwingMs || SWING_MS)); $('#swingBar i').style.width = (k * 100).toFixed(1) + '%'; } }
 // a mine cart rolls the banked ore out along the rails
 const carts = [];
 function drawCart(cx) {
@@ -235,20 +255,39 @@ function drawMatrix(dt) {
   g.font = '7px VT, monospace';
   for (const c of mcols) { c.y += c.v * dt; if (c.y > 210) { c.y = rnd(-40, 0); c.x = rnd(-X0, 320 + X0); } for (let k = 0; k < 6; k++) { g.fillStyle = k ? `rgba(25,240,160,${.7 - k * .11})` : '#c8ffe8'; g.fillText('0123456789abcdef'[(Math.random() * 16) | 0], Math.round(c.x), Math.round(c.y - k * 7)); } }
 }
-function burst(r, n = 6, col) { const f = r.full; for (let i = 0; i < n; i++) sparks.push({ x: f.ox + rnd(4, f.w - 4), y: f.oy + rnd(2, f.h * .6), t: -rnd(0, .3), c: col }); }
+function burst(r, n = 6, col) { if (W3) return W3.burst(r.i, col, n); const f = r.full; for (let i = 0; i < n; i++) sparks.push({ x: f.ox + rnd(4, f.w - 4), y: f.oy + rnd(2, f.h * .6), t: -rnd(0, .3), c: col }); }
 let lastT = 0, acc = 0;
-(function loop(t) { requestAnimationFrame(loop); const dt = Math.min(.1, (t - (lastT || t)) / 1000); lastT = t; acc += dt; if (document.hidden || acc < 1 / 30) return; draw(t, acc); acc = 0; })(0);
+const W3S = { active: null, busy: false, empty: [], vein: -1, rush: false, hover: -1, fx: true, pet: false, bankOpen: false };
+let mxOn = false, tagT = 0, mmT = 0;
+function frame3(dt) {   // one 3D frame: the world, the matrix over it, the name tags and the map
+  W3S.active = active; W3S.busy = busy; rocks.forEach((r, i) => { W3S.empty[i] = !!r.respawn; }); W3S.vein = vein ? vein.rock : -1; W3S.rush = !!LIVE?.rush?.active;
+  W3S.hover = hoverRock ? hoverRock.i : -1; W3S.fx = S.fx; W3S.pet = !!S.pet; W3S.bankOpen = performance.now() < bankOpenUntil;
+  W3.frame(dt, W3S);
+  const on = performance.now() < matrixUntil; if (on || mxOn) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); if (on) { g.setTransform(1, 0, 0, 1, X0, 0); drawMatrix(dt); } } mxOn = on;
+  if ((tagT += dt) > .05) { tagT = 0; placeTags(); }
+  if ((mmT += dt) > .25) { mmT = 0; minimap(); }
+}
+(function loop(t) {
+  requestAnimationFrame(loop); const dt = Math.min(.1, (t - (lastT || t)) / 1000); lastT = t; if (document.hidden) return;
+  refill(); swingTick();
+  if (W3) return frame3(dt);
+  acc += dt; if (acc < 1 / 30) return; draw(t, acc); acc = 0;
+})(0);
 
 // ---------------- clicking the mine: left click mines, right click lists the options, the cursor names what is under it
 const toCanvas = e => { const r = cv.getBoundingClientRect(), k = Math.max(r.width / cv.width, r.height / cv.height), ox = (r.width - cv.width * k) / 2, oy = (r.height - cv.height * k) / 2; return [(e.clientX - r.left - ox) / k - X0, (e.clientY - r.top - oy) / k]; };   // object-fit: cover, scene offset X0
-cv.addEventListener('pointermove', e => { const [x, y] = toCanvas(e); hoverRock = rockAt(x, y); hoverLine(); });
-cv.addEventListener('pointerleave', () => { hoverRock = null; hoverLine(); });
-cv.addEventListener('click', e => { closeMenu(); const [x, y] = toCanvas(e), r = rockAt(x, y); if (r) mine(r.i); else if (active !== null) { stopMining(); gm('You stop mining.', 'd'); } });
-cv.addEventListener('contextmenu', e => { e.preventDefault(); const [x, y] = toCanvas(e), r = rockAt(x, y); openMenu(e, r ? [[`Mine <span class="c">hSOL rock ${r.i + 1}</span>`, () => mine(r.i)], [`Examine <span class="c">hSOL rock ${r.i + 1}</span>`, () => examineRock(r)]] : [['Walk here', () => { stopMining(); }], ['Bank the pack', bankAll]]); });
+if (!W3) {
+  cv.addEventListener('pointermove', e => { const [x, y] = toCanvas(e); hoverRock = rockAt(x, y); hoverLine(); });
+  cv.addEventListener('pointerleave', () => { hoverRock = null; hoverLine(); });
+  cv.addEventListener('click', e => { closeMenu(); const [x, y] = toCanvas(e), r = rockAt(x, y); if (r) mine(r.i); else if (active !== null) { stopMining(); gm('You stop mining.', 'd'); } });
+  cv.addEventListener('contextmenu', e => { e.preventDefault(); const [x, y] = toCanvas(e), r = rockAt(x, y); openMenu(e, r ? rockMenu(r) : [['Walk here', () => { stopMining(); }], ['Bank the pack', bankAll]]); });
+}
 function hoverLine() {
   const h = $('#hoverText'), r = hoverRock;
-  h.innerHTML = r ? `${r.respawn ? 'Examine' : 'Mine'} <span class="c">${r.respawn ? 'Rocks' : 'hSOL rock ' + (r.i + 1)}</span>${vein?.rock === r.i && !r.respawn ? ' <span class="g">· rich vein</span>' : ''} <span class="d">/ 1 more option</span>` : active !== null ? `Mining <span class="c">hSOL rock ${active + 1}</span>` : `${TOUCH ? 'Tap' : 'Click'} a rock to mine`;
-  cv.classList.toggle('busy', busy);
+  h.innerHTML = r ? `${r.respawn ? 'Examine' : 'Mine'} <span class="c">${r.respawn ? 'Rocks' : 'hSOL rock ' + (r.i + 1)}</span>${vein?.rock === r.i && !r.respawn ? ' <span class="g">· rich vein</span>' : ''} <span class="d">/ 1 more option</span>`
+    : hoverProp ? `Use <span class="c">${cap(hoverProp.name)}</span> <span class="d">/ 1 more option</span>`
+    : active !== null ? `Mining <span class="c">hSOL rock ${active + 1}</span>` : `${TOUCH ? 'Tap' : 'Click'} a rock to mine${W3 ? ` <span class="d">· ${TOUCH ? 'swipe' : 'drag'} to look round</span>` : ''}`;
+  (W3 ? W3.canvas : cv).classList.toggle('busy', busy);
 }
 function openMenu(e, items) {
   const m = $('#menu');
@@ -259,6 +298,21 @@ function openMenu(e, items) {
 }
 const closeMenu = () => { $('#menu').hidden = true; };
 addEventListener('pointerdown', e => { if (!e.target.closest('#menu')) closeMenu(); });
+function rockMenu(r) { return [[`Mine <span class="c">hSOL rock ${r.i + 1}</span>`, () => mine(r.i)], [`Examine <span class="c">hSOL rock ${r.i + 1}</span>`, () => examineRock(r)]]; }
+function walkTo(h) { if (!W3 || !h) return; if (active !== null) { stopMining(); gm('You stop mining.', 'd'); } W3.go({ x: h.x, z: h.z }); }
+function usePlace(id) {   // walk to the bank chest, the smithy, the board or the core, then use it
+  if (!W3 || !PLACES[id]) return; if (active !== null) stopMining(); gm(`You walk to the ${PLACES[id]}.`, 'd');
+  W3.go(id, () => {
+    if (id === 'bank') { bankOpenUntil = performance.now() + 1800; bankAll(); }
+    else if (id === 'smith') { tab('smith'); gm('The smith looks up from the anvil. Forge a pickaxe, take on hands or smelt ore.', 'y'); }
+    else if (id === 'board') { tab('board'); gm('The miners board: every name that submitted finds, ranked by XP.', 'y'); }
+    else { S.flags.core = 1; save(); examinePlace('core'); }
+  });
+}
+function examinePlace(id) {
+  gm({ bank: 'A chest bound in gold. Ore you put in here is safe, and the smithy spends from it.', smith: 'A stone furnace and an anvil. Better picks swing more hashes; more hands swing at once.', board: 'Notes pinned to a board: the miners with the most XP, every find re-checked by the server.', core: 'The hSOL core, the seam every crystal comes from. A hash with 28 zero bits is a core find: about one in 268 million.' }[id], id === 'core' ? 'p' : 'y');
+}
+function shake() { const el = W3 ? W3.canvas : cv; el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
 function examineRock(r) { gm(r.respawn ? 'There is no ore left in this rock. It will refill soon.' : `A rock seamed with hSOL ore. About ${r.left} more finds before it runs dry.${vein?.rock === r.i ? ' It glitters: a rich vein, double loot.' : ''}`); }
 
 // ---------------- mining: a swing is one batch of SHA-256 hashes per hand, each in its own worker; the best hash decides the ore
@@ -270,7 +324,7 @@ function getWorker(i) {
   return pool[i];
 }
 function mine(i) {
-  const r = rocks[i]; if (!r) return gm(`There is no rock ${i + 1}. Rocks are 1 to 5.`, 'r');
+  const r = rocks[i]; if (!r) return gm(`There is no rock ${i + 1}. Rocks are 1 to ${rocks.length}.`, 'r');
   if (S.inv.length >= PACK && !S.autoBank) return gm('Your pack is too full to hold any more ore. Bank it first (B).', 'r');
   if (r.respawn) return gm('There is no ore currently available in this rock.');
   if (active === i && busy) return;
@@ -307,7 +361,7 @@ function resolveSwing(d) {
     if (gr.bits >= 22) { S.feedQ.push({ rock: d.rock, seed: d.seed, nonce: d.nonce }); if (S.feedQ.length > 20) S.feedQ.shift(); clearTimeout(hbSoon); hbSoon = setTimeout(heartbeat, 1500); }
     addXp(gr.xp, gr); burst(r, gr.bits >= 22 ? 14 : 5, gr.id === 'core' ? '#ffd25a' : gr.id === 'crystal' ? '#c7a2ff' : gr.id === 'gem' ? '#97fbd3' : undefined);
     if (gr.bits >= 22) flash(gr.id);
-    if (gr.bits >= 25) { const L = $('#lvlUp'); L.hidden = false; L.innerHTML = `<b>${gr.name}!</b>${d.bits} zero bits`; L.style.animation = 'none'; void L.offsetWidth; L.style.animation = ''; clearTimeout(L._h); L._h = setTimeout(() => L.hidden = true, 3700); cv.classList.remove('shake'); void cv.offsetWidth; cv.classList.add('shake'); for (let i = 0; i < 90; i++) { const a = Math.random() * 6.283, sp = rnd(30, 90); fireworks.push({ x: r.full.ox + r.full.w / 2, y: r.full.oy + 10, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, l: rnd(.7, 1.6), c: gr.id === 'core' ? ['#ffd25a', '#fff2b2', '#e8a32a'][i % 3] : ['#c7a2ff', '#9b4dff', '#ffffff'][i % 3] }); } }
+    if (gr.bits >= 25) { const L = $('#lvlUp'); L.hidden = false; L.innerHTML = `<b>${gr.name}!</b>${d.bits} zero bits`; L.style.animation = 'none'; void L.offsetWidth; L.style.animation = ''; clearTimeout(L._h); L._h = setTimeout(() => L.hidden = true, 3700); shake(); if (W3) W3.big(r.i, gr.id === 'core' ? ['#ffd25a', '#fff2b2', '#e8a32a'] : ['#c7a2ff', '#9b4dff', '#ffffff']); else for (let i = 0; i < 90; i++) { const a = Math.random() * 6.283, sp = rnd(30, 90); fireworks.push({ x: r.full.ox + r.full.w / 2, y: r.full.oy + 10, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, l: rnd(.7, 1.6), c: gr.id === 'core' ? ['#ffd25a', '#fff2b2', '#e8a32a'][i % 3] : ['#c7a2ff', '#9b4dff', '#ffffff'][i % 3] }); } }
     if (!S.pet && d.hash.endsWith('00')) { S.pet = Date.now(); gm('A little rock golem shakes itself loose and starts following you.', 'g'); toast('Pet found: a rock golem'); pet.x = me.x; pet.y = me.y; }
     if (--r.left <= 0) { r.respawn = Date.now() + irnd(15000, 32000); if (vein?.rock === r.i) endVein(); }
     if (S.autoSubmit && S.name && S.proofs.filter(p => !S.sent[p.h]).length >= 10) submitFinds(true);
@@ -336,7 +390,7 @@ function addXp(n, gr) {
     HANDS.filter(h => h.lv > before && h.lv <= after && h.n > 1).forEach(h => gm(`You can now take on ${h.name.toLowerCase()} at the smithy.`, 'g'));
     const L = $('#lvlUp'); L.hidden = false; L.innerHTML = `<b>Level up!</b>Mining level ${after}`; L.style.animation = 'none'; void L.offsetWidth; L.style.animation = '';
     clearTimeout(L._h); L._h = setTimeout(() => L.hidden = true, 3700);
-    for (let i = 0; i < 70; i++) { const a = Math.random() * 6.283, s = rnd(20, 70); fireworks.push({ x: 160, y: 70, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 20, l: rnd(.6, 1.4), c: ['#ffd25a', '#9b4dff', '#19f0a0', '#ffffff'][i % 4] }); }
+    if (W3) W3.levelUp(); else for (let i = 0; i < 70; i++) { const a = Math.random() * 6.283, s = rnd(20, 70); fireworks.push({ x: 160, y: 70, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 20, l: rnd(.6, 1.4), c: ['#ffd25a', '#9b4dff', '#19f0a0', '#ffffff'][i % 4] }); }
   }
 }
 function xpDrop(n, gr) {
@@ -389,7 +443,8 @@ addEventListener('keydown', e => {
   if (k === 'escape') { closeMenu(); closeModals(); return; }
   if (!$$('.modal').every(m => m.hidden)) return;
   if (k === '/') { e.preventDefault(); $('#cmd').focus(); }
-  else if (/^[1-5]$/.test(k)) mine(+k - 1);
+  else if (/^[0-9]$/.test(k)) { const i = (+k || 10) - 1; if (i < rocks.length) mine(i); }
+  else if (W3 && k.startsWith('arrow')) { e.preventDefault(); if (k === 'arrowleft') W3.turn(.35); else if (k === 'arrowright') W3.turn(-.35); else W3.zoom(k === 'arrowup' ? .88 : 1.14); }
   else if (ACTIONS[k]) { e.preventDefault(); ACTIONS[k][1](); }
 });
 const cap = t => String(t || '').charAt(0).toUpperCase() + String(t || '').slice(1);
@@ -420,7 +475,11 @@ const DOCS = {
   docs: ['docs', 'Opens the full documentation in a new tab.'],
   big: ['big', 'Makes this terminal bigger, or back to normal.'],
   tab: ['tab <name>', 'Opens a side tab: pack, skill, quests, log, smithy, stats, wallet, swap, chart, drop, holders, chain, board, options, help.'],
-  mine: ['mine [1-5]', 'Mines the rock you name, or the best free one (a rich vein first).'],
+  mine: ['mine [rock]', 'Mines the rock you name (1 to 10; 1 to 5 in the 2D cave), or the best free one, a rich vein first.'],
+  walk: ['walk bank|smithy|board|core', 'Walks your miner to a place in the 3D mine and uses it: the bank chest banks your pack.'],
+  cam: ['cam left|right|in|out|reset', 'Turns or zooms the 3D camera. Dragging, the mouse wheel and the arrow keys do the same.'],
+  view: ['view 3d|2d', 'Switches between the 3D mine and the 2D pixel cave.'],
+  shirt: ['shirt <colour>', 'Your miner’s shirt, which everyone in the live mine sees: amethyst, mint, ember, cobalt, gold or rose.'],
   stop: ['stop', 'Stops mining.'],
   auto: ['auto [on|off]', 'Moves to the next rock when one runs dry.'],
   rocks: ['rocks', 'Every rock: finds left, refill timers and the rich vein.'],
@@ -483,10 +542,10 @@ const DOCS = {
   uptime: ['uptime', 'Time on the page, mining this session and in total.'],
   history: ['history', 'The commands you have typed.'],
   echo: ['echo <text>', 'Prints the text back.'],
-  matrix: ['matrix', 'Five seconds of falling hex over the cave.'],
+  matrix: ['matrix', 'Five seconds of falling hex over the mine.'],
   emote: ['emote <word> · gm · gg · lfg …', 'Shows a word over your miner for everyone in the live mine: gm, gn, gg, lfg, wagmi, hodl, nice, rich, ty or o7.'],
 };
-const HELP = [['mine <1-5> · stop · auto on|off', 'work a rock'], ['pack · bank · stats · best · xp', 'what you found'], ['verify <slot|hash|best> · examine <slot>', 're-hash any find'], ['smith · buy pick|hands · smelt dust|ore|gem', 'upgrade at the smithy'], ['quests · log · card · streak · pet', 'your progress'], ['wallet · connect · disconnect', 'your wallet'], ['quote <sol> [hsol|m1nt] · swap <sol> [hsol|m1nt]', 'trade through Jupiter'], ['price · hsol · apy · slot · epoch · tps', 'the chain, live'], ['drop · plan · ledger · holders', 'the hourly payout'], ['name <you> · submit · board', 'the miners board'], ['ca · x · chart · home · clear · export · reset', 'the rest'], ['ctrl+k', 'every action, searchable']];
+const HELP = [['mine <1-10> · stop · auto on|off', 'work a rock'], ['walk bank|smithy|board|core · cam · view · shirt', 'the 3D mine'], ['pack · bank · stats · best · xp', 'what you found'], ['verify <slot|hash|best> · examine <slot>', 're-hash any find'], ['smith · buy pick|hands · smelt dust|ore|gem', 'upgrade at the smithy'], ['quests · log · card · streak · pet', 'your progress'], ['wallet · connect · disconnect', 'your wallet'], ['quote <sol> [hsol|m1nt] · swap <sol> [hsol|m1nt]', 'trade through Jupiter'], ['price · hsol · apy · slot · epoch · tps', 'the chain, live'], ['drop · plan · ledger · holders', 'the hourly payout'], ['name <you> · submit · board', 'the miners board'], ['ca · x · chart · home · clear · export · reset', 'the rest'], ['ctrl+k', 'every action, searchable']];
 const CMDS = {
   help: a => { const c = (a[0] || '').toLowerCase(); if (c) { const d = DOCS[c] || DOCS[ALIAS[c]]; return d ? (msg(d[0], 'c'), msg(d[1], 'y')) : msg(`No command called "${c}". Type commands for the full list.`, 'r'); } HELP.forEach(([u, d]) => msg(`${u.padEnd(48)} ${d}`, 'y')); msg('help <command> explains one · commands lists all · docs opens the manual', 'd'); },
   commands: () => { Object.values(DOCS).forEach(([u, d]) => msg(`${u.padEnd(32)} ${d}`, 'y')); msg(`${Object.keys(DOCS).length} commands · press Tab to complete · ↑ ↓ for history`, 'd'); },
@@ -520,6 +579,10 @@ const CMDS = {
   emote: a => emote(a[0]),
   seed: () => { gm(`seed ${S.seed} · next nonce ${int(S.nonce)}`, 'y'); gm('Every hash is sha256("m1nt|<rock>|<seed>|<nonce>"). Change your name to get a new seed.', 'd'); },
   mine: a => a[0] ? mine(+a[0] - 1) : mineAny(),
+  walk: a => { const w = (a[0] || '').toLowerCase(), id = { bank: 'bank', chest: 'bank', smith: 'smith', smithy: 'smith', anvil: 'smith', furnace: 'smith', board: 'board', core: 'core' }[w]; if (!W3) return gm('Walking is for the 3D mine. Type "view 3d" to switch.', 'r'); if (!id) return gm('Walk where? bank, smithy, board or core.', 'r'); usePlace(id); },
+  cam: a => { if (!W3) return gm('The camera is for the 3D mine. Type "view 3d" to switch.', 'r'); const w = (a[0] || 'reset').toLowerCase(); if (w === 'left') W3.turn(.6); else if (w === 'right') W3.turn(-.6); else if (w === 'in') W3.zoom(.75); else if (w === 'out') W3.zoom(1.33); else if (w === 'reset') W3.home(); else gm('cam left, right, in, out or reset.', 'r'); },
+  view: a => { const w = (a[0] || '').toLowerCase(); if (w !== '3d' && w !== '2d') return gm(`You are in the ${W3 ? '3D mine' : '2D cave'}. Type "view 3d" or "view 2d" to switch.`, 'y'); setView(w); },
+  shirt: a => { const w = (a[0] || '').toLowerCase(), i = SHIRTS.findIndex(x => x[1].toLowerCase() === w); if (i < 0) return gm(`Shirts: ${SHIRTS.map(x => x[1].toLowerCase()).join(', ')}.`, 'r'); setShirt(i); },
   stop: () => { stopMining(); gm('You stop mining.', 'd'); },
   auto: a => { S.auto = a[0] ? a[0].toLowerCase() === 'on' : !S.auto; save(); paint(['opts', 'inv']); acts(); gm(`Auto-move to the next rock is ${S.auto ? 'on' : 'off'}.`, 'y'); },
   pack: () => { const c = {}; S.inv.forEach(p => c[p.g] = (c[p.g] || 0) + 1); gm(`Pack ${S.inv.length}/${PACK}: ` + (GRADES.map(g2 => c[g2.id] ? `${c[g2.id]} ${g2.name}` : '').filter(Boolean).join(', ') || 'empty'), 'y'); },
@@ -564,13 +627,13 @@ const CMDS = {
   time: () => msg(new Date().toUTCString(), 'y'),
   about: () => { msg('M1NT: a coin with a mine attached. Its creator fees become hSOL and drop to holders every hour, encrypted.', 'y'); msg('This terminal mines with real SHA-256 proof of work. Finds earn XP, upgrades and a place on the board, not tokens.', 'y'); },
 };
-const ALIAS = { inv: 'pack', level: 'stats', sol: 'price', net: 'tps', balance: 'wallet', '?': 'help', upgrade: 'smith', collection: 'log', cmds: 'commands', manual: 'docs', date: 'time', missions: 'daily' };
-CMDS.date = CMDS.time; CMDS.missions = CMDS.daily;
+const ALIAS = { camera: 'cam', goto: 'walk', inv: 'pack', level: 'stats', sol: 'price', net: 'tps', balance: 'wallet', '?': 'help', upgrade: 'smith', collection: 'log', cmds: 'commands', manual: 'docs', date: 'time', missions: 'daily' };
+CMDS.date = CMDS.time; CMDS.missions = CMDS.daily; CMDS.camera = CMDS.cam; CMDS.goto = CMDS.walk;
 for (const w of ['gm', 'gn', 'gg', 'lfg', 'wagmi', 'hodl', 'nice', 'rich', 'ty', 'o7']) CMDS[w] = () => emote(w);
 CMDS.cmds = CMDS.commands; CMDS.manual = CMDS.docs; CMDS.inv = CMDS.pack; CMDS.level = CMDS.stats; CMDS.sol = CMDS.price; CMDS.net = CMDS.tps; CMDS.balance = CMDS.wallet; CMDS['?'] = CMDS.help; CMDS.upgrade = CMDS.smith; CMDS.collection = CMDS.log;
 const CMD_CH = {}; for (const k of ['price', 'sol', 'hsol', 'apy', 'slot', 'epoch', 'tps', 'net', 'drop', 'plan', 'ledger', 'holders', 'ca', 'chart', 'x']) CMD_CH[k] = 'chain';
 for (const k of ['wallet', 'balance', 'connect', 'disconnect', 'quote', 'swap']) CMD_CH[k] = 'wallet'; for (const k of ['name', 'submit', 'board']) CMD_CH[k] = 'board';
-for (const k of ['mine', 'stop', 'auto', 'pack', 'inv', 'bank', 'stats', 'level', 'xp', 'best', 'verify', 'examine', 'smith', 'buy', 'smelt', 'quests', 'log', 'card', 'streak', 'pet', 'upgrade', 'collection', 'rocks', 'odds', 'proofs', 'seed', 'daily', 'missions', 'rank', 'neofetch', 'whoami', 'ls', 'top', 'bench', 'hash', 'matrix', 'sound']) CMD_CH[k] = 'game';
+for (const k of ['mine', 'stop', 'auto', 'pack', 'inv', 'bank', 'stats', 'level', 'xp', 'best', 'verify', 'examine', 'smith', 'buy', 'smelt', 'quests', 'log', 'card', 'streak', 'pet', 'upgrade', 'collection', 'rocks', 'odds', 'proofs', 'seed', 'daily', 'missions', 'rank', 'neofetch', 'whoami', 'ls', 'top', 'bench', 'hash', 'matrix', 'sound', 'walk', 'goto', 'cam', 'camera', 'view', 'shirt']) CMD_CH[k] = 'game';
 CMD_CH.live = 'board'; CMD_CH.emote = 'board'; for (const w of ['gm', 'gn', 'gg', 'lfg', 'wagmi', 'hodl', 'nice', 'rich', 'ty', 'o7']) CMD_CH[w] = 'board';
 async function run(line) {
   const [c, ...a] = line.split(/\s+/), fn = CMDS[c.toLowerCase()];
@@ -578,12 +641,19 @@ async function run(line) {
   CH = CMD_CH[c.toLowerCase()] || 'sys';
   try { await fn(a); } finally { CH = 'game'; }
 }
+function setView(v) {
+  if (v === '3d' && !W3 && S.view === '3d') return gm('This browser could not draw the 3D mine (WebGL is off or blocked), so you are in the 2D cave.', 'r');
+  if ((v === '3d') === !!W3) return gm(`You are already in the ${W3 ? '3D mine' : '2D cave'}.`, 'd');
+  S.view = v; save(); gm(v === '3d' ? 'Opening the 3D mine…' : 'Opening the 2D cave…', 'y'); setTimeout(() => location.reload(), 350);
+}
+function setShirt(i) { S.shirt = i; save(); W3?.setShirt(i); paint(['opts']); gm(`Your miner now wears ${SHIRTS[i][1].toLowerCase()}.`, 'y'); clearTimeout(hbSoon); hbSoon = setTimeout(heartbeat, 400); }
+function pickLook() { if (W3) { const p = PICKS[head().tint] || PICKS.copper; W3.setPick(p[0], p[1]); } }
 function mineAny() { const r = (vein && !rocks[vein.rock].respawn ? rocks[vein.rock] : null) || (active !== null ? rocks[active] : null) || rocks.find(x => !x.respawn); if (r) mine(r.i); else gm('Every rock is empty. They refill in a few seconds.', 'd'); }
 
 // ---------------- the pack, the bank and the smithy
 function bankAll(quiet) {
   if (!S.inv.length) return quiet === true || gm('Your pack is empty.', 'd');
-  const n = S.inv.length; S.inv.forEach(p => S.bank[p.g]++); S.banked += n; S.inv = []; save(); carts.push({ x: -30 - X0 }); sfx('bank'); paint(['inv', 'smith', 'log']); gm(`You deposit ${n} item${n > 1 ? 's' : ''} into the bank.`, 'y'); checkQuests();
+  const n = S.inv.length; S.inv.forEach(p => S.bank[p.g]++); S.banked += n; S.inv = []; save(); if (W3) W3.cart(); else carts.push({ x: -30 - X0 }); sfx('bank'); paint(['inv', 'smith', 'log']); gm(`You deposit ${n} item${n > 1 ? 's' : ''} into the bank.`, 'y'); checkQuests();
 }
 const canPay = cost => Object.entries(cost).every(([k, v]) => S.bank[k] >= v);
 const costText = cost => Object.entries(cost).map(([k, v]) => `${v} ${G(k).name}`).join(' + ') || 'free';
@@ -596,7 +666,7 @@ function buy(kind, i) {
   if (kind === 'hands' && it.n > MAXH) return gm(`This device has room for ${MAXH} mining hand${MAXH > 1 ? 's' : ''}; more would only slow it down.`, 'r');
   if (!canPay(it.cost)) return gm(`You need ${costText(it.cost)} in the bank.`, 'r');
   for (const [k, v] of Object.entries(it.cost)) S.bank[k] -= v;
-  S.up[key] = i; S.flags.smith = 1; save();
+  S.up[key] = i; S.flags.smith = 1; save(); if (kind === 'head') pickLook();
   gm(kind === 'head' ? `The smith hands you the ${it.name}: ${int(it.swing)} hashes a swing per hand.` : `You now mine with ${it.n} hands at once: ${it.name.toLowerCase()}.`, 'g');
   toast(kind === 'head' ? it.name : `${it.n} mining hands`); paint(['smith', 'skill', 'log']); acts(); checkQuests();
 }
@@ -835,7 +905,9 @@ const PANES = {
   opts(P) {
     const tog = (id, on, label) => `<button class="tog${on ? ' on' : ''}" id="${id}" type="button" aria-pressed="${on}"><i></i>${label}</button>`;
     P.innerHTML = `<h4>Options</h4>${kv('Mining as', esc(S.name || 'anon'))}${kv('Seed', esc(S.seed))}
-      <div class="togs">${tog('oAuto', S.auto, 'Move to the next rock when one runs dry')}${tog('oBank', S.autoBank, 'Bank automatically when the pack is full')}${tog('oSub', S.autoSubmit, 'Submit to the board every 10 finds')}${tog('oFx', S.fx, 'Sparkles, bats and drips')}${tog('oSnd', S.sound, 'Sound effects')}</div>
+      <div class="togs">${tog('oAuto', S.auto, 'Move to the next rock when one runs dry')}${tog('oBank', S.autoBank, 'Bank automatically when the pack is full')}${tog('oSub', S.autoSubmit, 'Submit to the board every 10 finds')}${tog('oFx', S.fx, 'Sparkles, bats, dust and drips')}${tog('oSnd', S.sound, 'Sound effects')}</div>
+      <label>World</label><div class="seg" id="oView"><button type="button" data-v="3d" aria-pressed="${!!W3}">3D mine</button><button type="button" data-v="2d" aria-pressed="${!W3}">2D cave</button></div>
+      <label>Shirt <small>(everyone in the live mine sees it)</small></label><div class="swatches" id="oShirt">${SHIRTS.map(([c, n], i) => `<button type="button" data-i="${i}" title="${n}" aria-label="${n} shirt" aria-pressed="${(S.shirt ?? 0) === i}" style="--c:${c}"></button>`).join('')}</div>
       <label for="oVol">Volume</label><select id="oVol">${[[.25, 'Quiet'], [.5, 'Medium'], [.8, 'Loud']].map(([v, l]) => `<option value="${v}" ${Math.abs(S.vol - v) < .01 ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <label for="oCpu">Hands to use <small>(this device: up to ${MAXH})</small></label><select id="oCpu"><option value="0">All you own (${Math.min(HANDS[S.up.hands].n, MAXH)})</option>${Array.from({ length: Math.min(HANDS[S.up.hands].n, MAXH) }, (_, i) => `<option value="${i + 1}" ${S.cpu === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select>
       <div class="row2"><button class="btn sm ghost" id="oExp" type="button">Export finds</button><button class="btn sm ghost" id="oCard" type="button">Miner card</button></div>
@@ -847,12 +919,13 @@ const PANES = {
     $('#oSub').onclick = () => { S.autoSubmit = !S.autoSubmit; save(); paint(['opts']); gm(S.autoSubmit ? (S.name ? 'Your finds go to the board every 10 finds.' : 'Auto-submit is on; pick a name on the board tab first.') : 'Auto-submit is off.', 'y'); };
     $('#oCpu').onchange = e => { S.cpu = +e.target.value; save(); gm(`Mining with ${hands()} hand${hands() > 1 ? 's' : ''}.`, 'y'); paint(['opts']); };
     $('#oExp').onclick = exportProofs; $('#oCard').onclick = openCard;
+    $$('#oView button').forEach(b => b.onclick = () => setView(b.dataset.v)); $$('#oShirt button').forEach(b => b.onclick = () => setShirt(+b.dataset.i));
     $('#oReset').onclick = e => { if (e.target.dataset.arm) { CMDS.reset(['yes']); } else { e.target.dataset.arm = 1; e.target.textContent = 'Click again to wipe everything'; setTimeout(() => { if (e.target.isConnected) { delete e.target.dataset.arm; e.target.textContent = 'Reset progress'; } }, 2500); } };
   },
   help(P) {
     P.innerHTML = `<h4>How the mine works</h4><p>Every swing hashes <code>m1nt|rock|seed|nonce</code> with SHA-256, once per nonce, in workers inside your browser. The hash with the most leading zero bits decides what you find.</p>
       <ul class="grades">${GRADES.map(g2 => `<li>${ico(g2.id)}<b>${g2.name}</b><span>${g2.bits}+ zero bits · ${int(g2.xp)} XP · about 1 in ${compact(2 ** g2.bits).replace('.00', '')} hashes</span></li>`).join('')}</ul>
-      <div class="sec"><h4>Keys</h4>${Object.entries(ACTIONS).map(([k, [l]]) => kv(`<kbd>${k === '?' ? '?' : k.toUpperCase()}</kbd>`, l)).join('')}${kv('<kbd>1</kbd>–<kbd>5</kbd>', 'mine that rock')}${kv('<kbd>/</kbd>', 'command line')}${kv('<kbd>Ctrl</kbd> <kbd>K</kbd>', 'every action')}${kv('right click', 'options')}</div>
+      <div class="sec"><h4>Keys</h4>${Object.entries(ACTIONS).map(([k, [l]]) => kv(`<kbd>${k === '?' ? '?' : k.toUpperCase()}</kbd>`, l)).join('')}${rocks.length > 5 ? kv('<kbd>1</kbd>–<kbd>0</kbd>', 'mine rock 1 to 10') + kv('<kbd>←</kbd> <kbd>→</kbd> · drag', 'turn the camera') + kv('<kbd>↑</kbd> <kbd>↓</kbd> · wheel', 'zoom') + kv('click the floor', 'walk there') : kv('<kbd>1</kbd>–<kbd>5</kbd>', 'mine that rock')}${kv('<kbd>/</kbd>', 'command line')}${kv('<kbd>Ctrl</kbd> <kbd>K</kbd>', 'every action')}${kv('right click', 'options')}</div>
       <p class="sec">Finds earn XP, upgrades and a place on the board. They are not tokens. Holding $M1NT is what earns the hourly hSOL drop.</p>
       <a class="btn sm" href="/docs" target="_blank" rel="noopener">Open the full docs</a><button class="btn sm ghost" id="hCmds" type="button">List every command</button>`;
     $('#hCmds').onclick = () => runLine('commands');
@@ -967,7 +1040,9 @@ const TABS = { inv: 'Pack', skill: 'Skill', quests: 'Quests', log: 'Collection l
 function palItems() {
   return [
     ...Object.entries(ACTIONS).map(([k, [l, fn]]) => [l, k === '?' ? '?' : k.toUpperCase(), fn]),
-    ...[1, 2, 3, 4, 5].map(i => [`Mine rock ${i}`, String(i), () => mine(i - 1)]),
+    ...rocks.map(r => [`Mine rock ${r.i + 1}`, String((r.i + 1) % 10), () => mine(r.i)]),
+    ...(W3 ? [...Object.entries(PLACES).map(([id, n]) => [`Walk to the ${n}`, 'walk', () => usePlace(id)]), ['Reset the camera', 'cam', () => W3.home()]] : []),
+    [W3 ? 'Switch to the 2D cave' : 'Switch to the 3D mine', 'view', () => setView(W3 ? '2d' : '3d')], ...SHIRTS.map(([, n], i) => [`Wear the ${n.toLowerCase()} shirt`, 'shirt', () => setShirt(i)]),
     ...Object.entries(TABS).map(([k, l]) => [`Open ${l}`, 'tab', () => tab(k)]),
     ['Buy the next pickaxe', 'smithy', () => buy('head', S.up.head + 1)], ['Take on another hand', 'smithy', () => buy('hands', S.up.hands + 1)],
     ...SMELT.map(([f, n, t, v], i) => [`${v} ${n} ${G(f).name} into ${G(t).name}`, 'furnace', () => smelt(i)]),
@@ -1003,10 +1078,11 @@ async function openCard() {
   try { await document.fonts.ready; } catch {}
   const c = $('#cardCv'), x = c.getContext('2d'), Wc = 1200, Hc = 630, lv = level(S.xp);
   x.imageSmoothingEnabled = false; x.fillStyle = '#0b0907'; x.fillRect(0, 0, Wc, Hc);
-  x.drawImage(caveImg, 0, 10, 320, 168, 0, 0, Wc, 630);
+  if (W3) x.drawImage(W3.still(300, 158, false), 0, 0, Wc, Hc); else x.drawImage(caveImg, 0, 10, 320, 168, 0, 0, Wc, 630);
   x.fillStyle = 'rgba(8,6,4,.72)'; x.fillRect(0, 0, 640, Hc); x.fillStyle = '#000'; x.fillRect(640, 0, 6, Hc);
-  const f = MF[0]; x.drawImage(minerImg, f.sx, f.sy, f.w, f.h, 820, 250, f.w * 6, f.h * 6);
-  if (S.pet) GOLEM.forEach((row, j) => [...row].forEach((ch, i) => { if (GC[ch]) { x.fillStyle = GC[ch]; x.fillRect(760 + i * 6, 568 + j * 6 - 42, 6, 6); } }));
+  if (W3) { x.fillStyle = '#000'; x.fillRect(724, 112, 400, 444); x.drawImage(W3.still(98, 108, true), 728, 116, 392, 432); x.fillStyle = '#ffd25a'; x.fillRect(724, 112, 400, 4); }
+  else { const f = MF[0]; x.drawImage(myImg(), f.sx, f.sy, f.w, f.h, 820, 250, f.w * 6, f.h * 6); }
+  if (S.pet && !W3) GOLEM.forEach((row, j) => [...row].forEach((ch, i) => { if (GC[ch]) { x.fillStyle = GC[ch]; x.fillRect(760 + i * 6, 568 + j * 6 - 42, 6, 6); } }));
   x.fillStyle = '#ffd25a'; x.font = '64px Silk, monospace'; x.fillText('M1NT MINE', 56, 112);
   x.fillStyle = '#fff'; x.font = '58px VT, monospace'; x.fillText(S.name || 'anon miner', 56, 196);
   const rows = [['Mining level', `${lv} · ${rank(lv)}`], ['Experience', int(S.xp) + ' XP'], ['Best hash', S.best ? S.best.b + ' zero bits' : '—'], ['Hashes', fmtH(S.hashes)], ['Pickaxe', head().name], ['Quests', `${QUESTS.filter(q => S.qdone[q[0]]).length}/${QUESTS.length}`]];
@@ -1038,7 +1114,23 @@ function xpTrack() {
   $('#xpTrack').innerHTML = `<b>Lv ${lv}</b><i><u style="width:${(k * 100).toFixed(1)}%"></u></i><span>${ph ? compact(ph).replace('.00', '') + ' XP/h' : int(S.xp) + ' XP'}</span>`;
 }
 const mm = $('#minimap').getContext('2d');
+function minimap3() {   // the 3D mine from above: rocks, places, everyone, and the way your camera looks
+  const L = W3.layout(), M = 120, X = x => 60 + x / L.rx * 54, Z = z => 62 + z / L.rz * 42;
+  mm.clearRect(0, 0, M, M); mm.save(); mm.beginPath(); mm.arc(60, 60, 58, 0, 6.283); mm.clip();
+  mm.fillStyle = '#20180f'; mm.fillRect(0, 0, M, M); mm.fillStyle = '#5a4026'; mm.beginPath(); mm.ellipse(60, 62, 54, 42, 0, 0, 6.283); mm.fill();
+  const rz = Math.round(Z(L.railZ)); mm.fillStyle = '#7f868d'; mm.fillRect(0, rz - 1, M, 1); mm.fillRect(0, rz + 1, M, 1);
+  const dot = (x, z, c, s = 3) => { mm.fillStyle = c; mm.fillRect(Math.round(X(x)) - (s >> 1), Math.round(Z(z)) - (s >> 1), s, s); };
+  const P = L.props; dot(P.bank[0], P.bank[1], '#e8a32a', 4); dot(P.smith[0], P.smith[1], '#ff6a1a', 4); dot(P.board[0], P.board[1], '#e9e1d2', 3); dot(P.core[0], P.core[1], '#b07cff', 5);
+  const blink = Math.floor(Date.now() / 300) % 2;
+  L.rocks.forEach((p, i) => { const r = rocks[i]; dot(p.x, p.z, r.respawn ? '#6b6158' : vein?.rock === i ? (blink ? '#ffd25a' : '#e8a32a') : (i === active && blink ? '#ffffff' : '#ffff00'), 4); });
+  L.others.forEach(o => dot(o.x, o.z, '#7fb2ff', 3)); if (L.pet) dot(L.pet.x, L.pet.z, '#b07cff', 2);
+  const mx = X(L.me.x), mz = Z(L.me.z), a = L.yaw; mm.fillStyle = 'rgba(255,255,255,.2)'; mm.beginPath(); mm.moveTo(mx, mz); mm.lineTo(mx - Math.sin(a - .55) * 24, mz - Math.cos(a - .55) * 18); mm.lineTo(mx - Math.sin(a + .55) * 24, mz - Math.cos(a + .55) * 18); mm.closePath(); mm.fill();
+  dot(L.me.x, L.me.z, '#ffffff', 3);
+  mm.restore(); mm.fillStyle = '#c8b8a0'; mm.font = '10px Silk, monospace'; mm.fillText('N', 56, 12);
+}
+$('#minimap').addEventListener('click', e => { if (!W3) return; const b = e.currentTarget.getBoundingClientRect(), L = W3.layout(), px = (e.clientX - b.left) / b.width * 120, pz = (e.clientY - b.top) / b.height * 120; walkTo({ x: (px - 60) / 54 * L.rx, z: (pz - 62) / 42 * L.rz }); });
 function minimap() {
+  if (W3) return minimap3();
   const M = 120; mm.clearRect(0, 0, M, M); mm.save(); mm.beginPath(); mm.arc(60, 60, 58, 0, 6.283); mm.clip();
   mm.fillStyle = '#20180f'; mm.fillRect(0, 0, M, M); mm.fillStyle = '#5a4026'; mm.beginPath(); mm.ellipse(60, 66, 50, 36, 0, 0, 6.283); mm.fill();
   mm.fillStyle = '#3b2c1c'; mm.fillRect(0, 96, M, 4); mm.fillStyle = '#7f868d'; mm.fillRect(0, 95, M, 1); mm.fillRect(0, 100, M, 1);
@@ -1061,7 +1153,7 @@ async function heartbeat() {
   if (document.hidden) return;
   const finds = S.feedQ.slice(0, 8);
   try {
-    const r = await api('live', {}, { id: S.cid, name: S.name, rock: active ?? -1, lv: level(S.xp), head: S.up.head, hands: hands(), hps: busy ? Math.round(hps) : 0, finds, emote: Date.now() < myEmoteUntil ? myEmote : null });
+    const r = await api('live', {}, { id: S.cid, name: S.name, rock: active ?? -1, lv: level(S.xp), head: S.up.head, hands: hands(), hps: busy ? Math.round(hps) : 0, finds, emote: Date.now() < myEmoteUntil ? myEmote : null, shirt: S.shirt ?? null });
     if (finds.length) { S.feedQ = S.feedQ.slice(finds.length); save(); }
     const was = !!LIVE?.rush?.active; LIVE = r;
     if (r.live) {
@@ -1073,6 +1165,7 @@ async function heartbeat() {
       if (!r.rush.active && was) gm('The Gold Rush is over.', 'd');
     }
   } catch (e) { LIVE = { live: false, why: friendly(e) }; }
+  W3?.setOthers(LIVE?.live ? LIVE.online.filter(o => !o.self) : [], shirtOf);
   rushBar(); topbar(getState()); paint(['live']); placeTags(); checkQuests();
 }
 function rushBar() { const b = $('#rushBar'), R = LIVE?.rush; if (R?.active) { b.hidden = false; b.innerHTML = `<b>Gold Rush</b> double loot for everyone · ${R.n} gems in 10 min`; } else b.hidden = true; }
@@ -1081,7 +1174,16 @@ function runTicker() {
   T.innerHTML = `<span>${G(f.grade) ? ico(f.grade) : ''}<b>${esc(f.name)}</b> found ${G(f.grade)?.name || esc(f.grade)} · ${f.bits} bits</span>`; T.classList.add('on');
   setTimeout(() => { T.classList.remove('on'); setTimeout(() => { tickBusy = false; runTicker(); }, 400); }, 4200);
 }
+const tagEls = new Map();
 function placeTags() {
+  if (W3) {   // keyed, so a speech bubble is not redrawn (and its pop-in replayed) every frame
+    const box = $('#tags'), T = W3.tags($('#view')), seen = new Set();
+    const put = (key, cls, html, x, y) => { let el = tagEls.get(key); if (!el) { el = document.createElement('span'); el.className = cls; box.append(el); tagEls.set(key, el); } if (el._h !== html) { el.innerHTML = html; el._h = html; } el.style.left = Math.round(x) + 'px'; el.style.top = Math.round(y) + 'px'; seen.add(key); };
+    for (const o of T.others) { put('t' + o.key, 'tag', `${esc(o.name)} <i>${o.lv}</i>`, o.x, o.y); if (o.emote) put('b' + o.key, 'bub', esc(o.emote), o.x, o.y - 28); }
+    if (Date.now() < myEmoteUntil && T.me.on) put('me', 'bub me', esc(myEmote), T.me.x, T.me.y);
+    for (const [k, el] of tagEls) if (!seen.has(k)) { el.remove(); tagEls.delete(k); }
+    return;
+  }
   const box = $('#tags'), v = cv.getBoundingClientRect(), k = Math.max(v.width / cv.width, v.height / cv.height), ox = (v.width - cv.width * k) / 2, oy = (v.height - cv.height * k) / 2;
   const at = (x, y) => `left:${Math.round(ox + (x + X0) * k)}px;top:${Math.round(oy + y * k)}px`;
   box.innerHTML = spots.map(o => `<span class="tag" style="${at(o.x, o.y - 50)}">${esc(o.name)} <i>${o.lv}</i></span>${o.emote ? `<span class="bub" style="${at(o.x, o.y - 62)}">${esc(o.emote)}</span>` : ''}`).join('') +
@@ -1100,9 +1202,9 @@ onState(s => { if (s?.sol?.usd) { priceHist.push({ t: Date.now(), sol: s.sol.usd
 pollState(12000);
 
 // ---------------- first words
-dailyInit(); paint(); minimap(); hoverLine(); acts(); xpTrack(); checkQuests();
+dailyInit(); paint(); minimap(); hoverLine(); acts(); xpTrack(); checkQuests(); pickLook(); if (W3 && S.shirt != null) W3.setShirt(S.shirt);
 const lv0 = level(S.xp);
 gm('Welcome to the M1NT mine.', 'g');
 gm(S.xp ? `Welcome back${S.name ? ', ' + S.name : ''}. Mining level ${lv0}, ${head().name}, ${S.inv.length} item${S.inv.length === 1 ? '' : 's'} in your pack.` : `${TOUCH ? 'Tap' : 'Click'} a rock to start mining. Every swing runs real SHA-256 proof of work in your browser.`, 'y');
 if (S.streak.n > 1) gm(`Day ${S.streak.n} in a row at the mine.`, 'g');
-msg(TOUCH ? 'Type help for commands. Long-press a rock for options.' : 'Press M to mine, Ctrl+K for every action, ? for help. Right click a rock for options.', 'd', false, 'sys');
+msg(W3 ? (TOUCH ? 'Tap a rock to mine, tap the floor to walk, swipe sideways to look round. Type help for commands.' : 'Click a rock to mine, the floor to walk, the chest to bank. Drag to look round, scroll to zoom. Ctrl+K for every action.') : TOUCH ? 'Type help for commands. Long-press a rock for options.' : 'Press M to mine, Ctrl+K for every action, ? for help. Right click a rock for options.', 'd', false, 'sys');
