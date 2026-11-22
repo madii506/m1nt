@@ -1,7 +1,7 @@
 {
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/api/:op(state|wallet|holders|plan|ledger|quote|swap|status|verify|submit|board)", "destination": "/api/m1nt?op=:op" }
+    { "source": "/api/:op(state|wallet|holders|plan|ledger|quote|swap|status|verify|submit|board|live)", "destination": "/api/m1nt?op=:op" }
   ],
   "headers": [
     { "source": "/assets/(.*)", "headers": [{ "key": "cache-control", "value": "public, max-age=600, stale-while-revalidate=86400" }] },
