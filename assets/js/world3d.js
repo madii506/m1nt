@@ -44,7 +44,7 @@ export function createWorld(host, cb = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
   renderer.setPixelRatio(1);
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0705); scene.fog = new THREE.Fog(0x0a0705, 24, 60);
-  const camera = new THREE.PerspectiveCamera(48, 16 / 9, .1, 140);
+  const camera = new THREE.PerspectiveCamera(54, 16 / 9, .1, 140);
   const box = (w, h, d, color, x, y, z, parent = scene, o) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), typeof color === 'number' ? mat(color, o) : color); m.position.set(x, y, z); parent.add(m); return m; };
   const statics = new THREE.Group(); scene.add(statics);   // everything that never moves; merged into a few meshes at the end
   const onWall = (deg, inset = .96) => { const a = deg * Math.PI / 180; return [Math.sin(a) * RX * inset, -Math.cos(a) * RZ * inset, a]; };
@@ -151,7 +151,7 @@ export function createWorld(host, cb = {}) {
     const hov = ring(0xffffff, s), act = ring(0xffff00, s), vein = ring(C.gold, s); g.add(hov, act, vein);
     const num = numberSprite(i + 1); num.position.set(0, 2.6 * s + .8, 0); num.material.opacity = .8; g.add(num);
     const ob = { x, z, r: 1.65 * s, rock: i }; obstacles.push(ob);
-    return { i, g, body, crystals, live, dark, hov, act, vein, num, ob, empty: false, occ: false, pop: 1, r: 1.6 * s, cy: 1.05 * s, pos: new THREE.Vector3(x, 0, z) };
+    return { i, g, body, crystals, live, dark, hov, act, vein, num, nb: [num.scale.x, num.scale.y], ny: 2.6 * s + .8, ob, empty: false, occ: false, pop: 1, r: 1.6 * s, cy: 1.05 * s, pos: new THREE.Vector3(x, 0, z) };
   });
   { // merge every static mesh that shares a material into one: same picture, far fewer draw calls
     statics.updateMatrixWorld(true); const buckets = new Map(), done = [];
@@ -295,7 +295,10 @@ export function createWorld(host, cb = {}) {
     });
     // you: to the rock you work, or wherever you clicked
     let moving = false, mining = false;
-    if (s.active !== null && s.active !== undefined) {
+    if (s.move && (s.move.f || s.move.r)) {   // WASD, relative to where the camera looks
+      walk = null; let vx = -Math.sin(cam.yaw) * s.move.f + Math.cos(cam.yaw) * s.move.r, vz = -Math.cos(cam.yaw) * s.move.f - Math.sin(cam.yaw) * s.move.r; const L = Math.hypot(vx, vz) || 1;
+      moving = steer(me, me.pos.x + vx / L * 3, me.pos.z + vz / L * 3, dt, null);
+    } else if (s.active !== null && s.active !== undefined) {
       walk = null; const r = rocks[s.active], [tx, tz] = spot(r); moving = steer(me, tx, tz, dt, r.ob);
       if (!moving) { me.face = Math.atan2(r.pos.x - me.pos.x, r.pos.z - me.pos.z); mining = s.busy; }
     } else if (walk) {
@@ -339,6 +342,8 @@ export function createWorld(host, cb = {}) {
         const cx = r.pos.x - e.x, cy = r.cy - e.y, cz = r.pos.z - e.z, t = Math.max(0, Math.min(1, (cx * ax + cy * ay + cz * az) / L2)), dx = cx - ax * t, dy = cy - ay * t, dz = cz - az * t;
         const occ = t > .04 && t < .9 && dx * dx + dy * dy + dz * dz < (r.r * 1.1) ** 2;
         if (occ !== r.occ) { r.occ = occ; for (const m of [r.live, r.dark]) { m.transparent = occ; m.opacity = occ ? .25 : 1; m.depthWrite = !occ; } r.crystals.visible = !r.empty && !occ; r.num.visible = !occ; }
+        const nx = r.pos.x - e.x, ny = r.ny - e.y, nz = r.pos.z - e.z, k = Math.min(1, Math.sqrt(nx * nx + ny * ny + nz * nz) / (camera.aspect < 1 ? 19 : 13));   // a number near the lens shrinks, so it never fills the screen
+        r.num.scale.set(r.nb[0] * k, r.nb[1] * k, 1);
       }
     }
     renderer.render(scene, camera);
@@ -364,6 +369,7 @@ export function createWorld(host, cb = {}) {
     const out = document.createElement('canvas'); out.width = pw; out.height = ph; out.getContext('2d').drawImage(canvas, 0, 0);
     renderer.setSize(size.x, size.y, false); renderer.render(scene, camera); return out;
   }
+  canvas.__me = () => [me.pos.x, me.pos.z];   // where you stand (used by the tests)
   canvas.__info = () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, meshes: (() => { let n = 0; scene.traverse(o => { if (o.isMesh && o.visible) n++; }); return n; })() });
   canvas.__at = (kind, i) => { const b = canvas.getBoundingClientRect(), v = kind === 'rock' ? rocks[i].pos.clone().setY(rocks[i].cy) : kind === 'me' ? me.pos.clone().setY(1.2) : new THREE.Vector3(PROP_AT[i][0], 1, PROP_AT[i][1]), p = projected(v, b); return [b.left + p.x, b.top + p.y]; };   // where a rock, a place or you are on screen (used by the tests)
   return {
@@ -398,6 +404,8 @@ export function createWorld(host, cb = {}) {
     turn(d) { cam.goal = (cam.goal ?? cam.yaw) + d; }, zoom(f) { cam.dist = Math.max(7, Math.min(26, cam.dist * f)); },
     home() { cam.yaw = Math.atan2(Math.sin(cam.yaw), Math.cos(cam.yaw)); cam.goal = 0; cam.pitch = .6; cam.dist = host.getBoundingClientRect().width < 640 ? 13.5 : 17; },
     stopWalk() { walk = null; },
+    nearPlace() { for (const ob of obstacles) if (ob.prop && Math.hypot(me.pos.x - ob.x, me.pos.z - ob.z) < ob.r + 2) return ob.prop; return null; },
     view(yaw, pitch, dist) { cam.yaw = yaw; cam.pitch = pitch; cam.dist = cam.d = dist; cam.goal = null; },
+    numbers(on) { rocks.forEach(r => { r.num.visible = !!on && !r.occ; }); },
   };
 }

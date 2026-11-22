@@ -29,6 +29,8 @@ export async function db() {
     await Q(`alter table m1nt_presence add column if not exists emote text`);
     await Q(`alter table m1nt_presence add column if not exists et timestamptz`);
     await Q(`alter table m1nt_presence add column if not exists shirt int`);
+    await Q(`create table if not exists m1nt_engine_runs (hour text primary key, mode text not null, status text not null, started timestamptz not null default now(), finished timestamptz, claimed numeric default 0, swapped numeric default 0, shielded numeric default 0, sent numeric default 0, recipients int default 0, eligible int default 0, holders int default 0, sigs jsonb, note text, steps jsonb)`);
+    await Q(`create table if not exists m1nt_engine_state (k text primary key, v text not null, t timestamptz not null default now())`);
     return Q;
   })().catch(e => { ready = null; throw e; });
   return ready;
