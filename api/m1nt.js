@@ -89,6 +89,7 @@ async function pending(creator) {
 const nextHour = () => { const d = new Date(); d.setUTCMinutes(60, 0, 0); return d.getTime(); };
 
 // ---------------- the ops
+const EMOTES = ['gm', 'gn', 'gg', 'lfg', 'wagmi', 'hodl', 'nice', 'rich', 'ty', 'o7'];
 const OPS = {
   async state(req, res) {
     const cfg = config();
@@ -159,7 +160,7 @@ const OPS = {
   async submit(req, res) {
     if (req.method !== 'POST') return fail(res, 405, 'POST');
     const q = await db(); if (!q) return ok(res, { live: false, why: 'the board is offline' });
-    if (!(await allow(q, ip(req)))) return fail(res, 429, 'slow down: 12 submissions a minute');
+    if (!(await allow(q, 's:' + ip(req)))) return fail(res, 429, 'slow down: 12 submissions a minute');
     const b = await body(req), name = String(b.name || '').trim().replace(/\s+/g, ' ');
     if (!/^[A-Za-z0-9 _-]{2,16}$/.test(name)) return fail(res, 400, 'name: 2–16 letters, digits, space, _ or -');
     const proofs = (Array.isArray(b.proofs) ? b.proofs : []).slice(0, 60).map(check).filter(p => p.ok);
@@ -173,9 +174,36 @@ const OPS = {
   },
   async board(req, res) {
     const q = await db(); if (!q) return ok(res, { live: false, why: 'the board is offline' }, 'public, s-maxage=30');
-    const rows = await q(`select name, sum(xp)::int as xp, count(*)::int as finds, max(bits)::int as best, max(t) as last from m1nt_proofs group by name order by xp desc, best desc limit 25`);
-    const tot = await q(`select count(*)::int as finds, coalesce(sum(xp),0)::int as xp, count(distinct name)::int as miners from m1nt_proofs`);
-    return ok(res, { live: true, rows, total: tot[0], grades: GRADES }, 'public, s-maxage=10, stale-while-revalidate=30');
+    const day = String(req.query.scope || '') === 'day', w = day ? `where t > now() - interval '1 day'` : '';
+    const rows = await q(`select name, sum(xp)::int as xp, count(*)::int as finds, max(bits)::int as best, max(t) as last from m1nt_proofs ${w} group by name order by xp desc, best desc limit 25`);
+    const tot = await q(`select count(*)::int as finds, coalesce(sum(xp),0)::int as xp, count(distinct name)::int as miners from m1nt_proofs ${w}`);
+    const top = await q(`select name, bits, rock, extract(epoch from t)::bigint as t from m1nt_proofs ${w} order by bits desc, t asc limit 1`);
+    return ok(res, { live: true, scope: day ? 'day' : 'all', rows, total: tot[0], rarest: top[0] || null, grades: GRADES }, 'public, s-maxage=10, stale-while-revalidate=30');
+  },
+  // the live mine: who is mining right now (and the emote they last sent), the newest finds of gem grade or better (each re-hashed here), and the Gold Rush meter
+  async live(req, res) {
+    const q = await db(); if (!q) return ok(res, { live: false, why: 'the live mine is offline' }, 'no-store');
+    let me = '';
+    if (req.method === 'POST') {
+      if (!(await allow(q, 'l:' + ip(req), 30))) return fail(res, 429, 'slow down');
+      const b = await body(req), id = String(b.id || ''); if (!/^[a-z0-9]{8,24}$/i.test(id)) return fail(res, 400, 'bad id'); me = id;
+      const raw = String(b.name || '').trim().replace(/\s+/g, ' '), name = /^[A-Za-z0-9 _-]{2,16}$/.test(raw) ? raw : 'anon';
+      const n = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(+v || 0)));
+      const emote = EMOTES.includes(b.emote) ? b.emote : null;
+      await q(`insert into m1nt_presence (id, name, rock, lv, head, hands, hps, t, emote, et) values ($1,$2,$3,$4,$5,$6,$7, now(), $8, case when $8::text is null then null else now() end) on conflict (id) do update set name = $2, rock = $3, lv = $4, head = $5, hands = $6, hps = $7, t = now(), emote = coalesce($8, m1nt_presence.emote), et = case when $8::text is null then m1nt_presence.et else now() end`,
+        [id, name, n(b.rock ?? -1, -1, 4), n(b.lv, 1, 99), n(b.head, 0, 5), n(b.hands, 1, 6), Math.max(0, Math.min(5e8, +b.hps || 0)), emote]);
+      const finds = (Array.isArray(b.finds) ? b.finds : []).slice(0, 8).map(check).filter(p => p.ok && p.bits >= 22);
+      for (const p of finds) await q(`insert into m1nt_feed (hash, name, grade, bits, rock) values ($1,$2,$3,$4,$5) on conflict (hash) do nothing`, [p.hash, name, p.grade, p.bits, p.rock]);
+      if (Math.random() < .03) { await q(`delete from m1nt_presence where t < now() - interval '1 hour'`); await q(`delete from m1nt_feed where t < now() - interval '7 days'`); }
+    }
+    const [online, feed, rush] = await Promise.all([
+      q(`select id, name, rock, lv, head, hands, hps, case when et > now() - interval '20 seconds' then emote end as emote from m1nt_presence where t > now() - interval '45 seconds' order by hps desc limit 30`),
+      q(`select name, grade, bits, rock, left(hash, 12) as h, extract(epoch from t)::bigint as t from m1nt_feed order by t desc limit 25`),
+      q(`select count(*)::int as n from m1nt_feed where t > now() - interval '10 minutes'`),
+    ]);
+    const goal = 40, n = rush[0]?.n || 0;
+    return ok(res, { live: true, online: online.map(r => ({ name: r.name, rock: r.rock, lv: r.lv, head: r.head, hands: r.hands, hps: +r.hps, emote: r.emote || null, self: r.id === me })), hps: online.reduce((a, r) => a + (+r.hps || 0), 0),
+      feed: feed.map(r => ({ ...r, t: +r.t })), rush: { n, goal, active: n >= goal } }, 'no-store');
   },
 };
 
