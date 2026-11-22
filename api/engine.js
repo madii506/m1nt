@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       const a = String(query.addr); if (!isAddr(a)) return fail(res, 400, 'not a Solana address');
       if (q && !(await allow(q, 'e:' + ip(req), 20))) return fail(res, 429, 'slow down');
       try { return ok(res, { addr: a, privateWallet: await hasPrivateWallet(a) }, 'public, s-maxage=60'); }
-      catch (e) { return ok(res, { addr: a, privateWallet: null, why: 'the Privacy Rings registry could not be read' }, 'no-store'); }
+      catch (e) { return ok(res, { addr: a, privateWallet: null, why: 'the Privacy Rings registry could not be read', detail: String(e?.message || e).replace(/api-key=[^&\s]+/g, 'api-key=…').slice(0, 160) }, 'no-store'); }
     }
     const runs = q ? await q(`select hour, mode, status, started, finished, claimed, swapped, shielded, sent, recipients, eligible, holders, sigs, note from m1nt_engine_runs order by started desc limit 30`) : [];
     const row = r => ({ hour: r.hour, mode: r.mode, status: r.status, at: r.finished || r.started, claimedSol: num(r.claimed), swappedHsol: num(r.swapped), shieldedHsol: num(r.shielded), sentHsol: num(r.sent), recipients: r.recipients || 0, eligible: r.eligible || 0, holders: r.holders || 0, sigs: typeof r.sigs === 'string' ? JSON.parse(r.sigs) : r.sigs || [], note: r.note || '' });

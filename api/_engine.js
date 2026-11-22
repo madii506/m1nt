@@ -231,11 +231,11 @@ async function ensureRecord(spr, client, signer, keypair, submit) {
 
 // whether a holder can receive the drop: a published private-wallet record for that address
 let REG = null;
-export async function hasPrivateWallet(owner) {
-  if (!/^https:\/\//.test(process.env.RPC_URL || '')) throw new Error('the engine RPC is not set');
+export async function hasPrivateWallet(owner) {   // a read only, so a public RPC does until RPC_URL is set
+  const url = /^https:\/\//.test(process.env.RPC_URL || '') ? process.env.RPC_URL : 'https://solana-rpc.publicnode.com';
   if (!REG) REG = (async () => {
     const spr = await import('@heliuslabs/spr'), { SignedTeePolicy } = await import('@heliuslabs/spr/client'), kit = await import('@solana/kit');
-    const client = await spr.createSprClient({ solanaRpcUrl: process.env.RPC_URL, proverTee: SignedTeePolicy.forNetwork('mainnet') });
+    const client = await spr.createSprClient({ solanaRpcUrl: url, proverTee: SignedTeePolicy.forNetwork('mainnet') });
     return { client, kit };
   })().catch(e => { REG = null; throw e; });
   const { client, kit } = await REG, r = await client.getUserRecords([kit.address(owner)]);
