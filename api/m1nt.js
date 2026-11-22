@@ -38,8 +38,10 @@ async function prices() {
 }
 async function apy() {
   return cached('apy', 600e3, async () => {
-    const j = await get(`https://extra-api.sanctum.so/v1/apy/latest?lst=${MINTS.HSOL}`);
-    const v = +j?.apys?.[MINTS.HSOL]; if (!(v > 0 && v < 1)) throw new Error('no apy'); return v;
+    for (const w of ['latest', 'inception']) {   // "latest" reads 0 around an epoch turn; the since-launch average is the fallback
+      try { const j = await get(`https://extra-api.sanctum.so/v1/apy/${w}?lst=${MINTS.HSOL}`); const v = +j?.apys?.[MINTS.HSOL]; if (v > 0 && v < 1) return v; } catch {}
+    }
+    throw new Error('no apy');
   });
 }
 async function network() {
