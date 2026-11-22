@@ -190,19 +190,19 @@ const OPS = {
       const raw = String(b.name || '').trim().replace(/\s+/g, ' '), name = /^[A-Za-z0-9 _-]{2,16}$/.test(raw) ? raw : 'anon';
       const n = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(+v || 0)));
       const emote = EMOTES.includes(b.emote) ? b.emote : null;
-      await q(`insert into m1nt_presence (id, name, rock, lv, head, hands, hps, t, emote, et) values ($1,$2,$3,$4,$5,$6,$7, now(), $8, case when $8::text is null then null else now() end) on conflict (id) do update set name = $2, rock = $3, lv = $4, head = $5, hands = $6, hps = $7, t = now(), emote = coalesce($8, m1nt_presence.emote), et = case when $8::text is null then m1nt_presence.et else now() end`,
-        [id, name, n(b.rock ?? -1, -1, 4), n(b.lv, 1, 99), n(b.head, 0, 5), n(b.hands, 1, 6), Math.max(0, Math.min(5e8, +b.hps || 0)), emote]);
+      await q(`insert into m1nt_presence (id, name, rock, lv, head, hands, hps, t, emote, et, shirt) values ($1,$2,$3,$4,$5,$6,$7, now(), $8, case when $8::text is null then null else now() end, $9) on conflict (id) do update set name = $2, rock = $3, lv = $4, head = $5, hands = $6, hps = $7, t = now(), shirt = $9, emote = coalesce($8, m1nt_presence.emote), et = case when $8::text is null then m1nt_presence.et else now() end`,
+        [id, name, n(b.rock ?? -1, -1, 9), n(b.lv, 1, 99), n(b.head, 0, 5), n(b.hands, 1, 6), Math.max(0, Math.min(5e8, +b.hps || 0)), emote, b.shirt == null || b.shirt === '' ? null : n(b.shirt, 0, 5)]);
       const finds = (Array.isArray(b.finds) ? b.finds : []).slice(0, 8).map(check).filter(p => p.ok && p.bits >= 22);
       for (const p of finds) await q(`insert into m1nt_feed (hash, name, grade, bits, rock) values ($1,$2,$3,$4,$5) on conflict (hash) do nothing`, [p.hash, name, p.grade, p.bits, p.rock]);
       if (Math.random() < .03) { await q(`delete from m1nt_presence where t < now() - interval '1 hour'`); await q(`delete from m1nt_feed where t < now() - interval '7 days'`); }
     }
     const [online, feed, rush] = await Promise.all([
-      q(`select id, name, rock, lv, head, hands, hps, case when et > now() - interval '20 seconds' then emote end as emote from m1nt_presence where t > now() - interval '45 seconds' order by hps desc limit 30`),
+      q(`select id, name, rock, lv, head, hands, hps, shirt, case when et > now() - interval '20 seconds' then emote end as emote from m1nt_presence where t > now() - interval '45 seconds' order by hps desc limit 30`),
       q(`select name, grade, bits, rock, left(hash, 12) as h, extract(epoch from t)::bigint as t from m1nt_feed order by t desc limit 25`),
       q(`select count(*)::int as n from m1nt_feed where t > now() - interval '10 minutes'`),
     ]);
     const goal = 40, n = rush[0]?.n || 0;
-    return ok(res, { live: true, online: online.map(r => ({ name: r.name, rock: r.rock, lv: r.lv, head: r.head, hands: r.hands, hps: +r.hps, emote: r.emote || null, self: r.id === me })), hps: online.reduce((a, r) => a + (+r.hps || 0), 0),
+    return ok(res, { live: true, online: online.map(r => ({ name: r.name, rock: r.rock, lv: r.lv, head: r.head, hands: r.hands, hps: +r.hps, shirt: r.shirt ?? null, emote: r.emote || null, self: r.id === me })), hps: online.reduce((a, r) => a + (+r.hps || 0), 0),
       feed: feed.map(r => ({ ...r, t: +r.t })), rush: { n, goal, active: n >= goal } }, 'no-store');
   },
 };

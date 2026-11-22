@@ -21,7 +21,7 @@ export const message = (rock, seed, nonce) => `m1nt|${rock}|${seed}|${nonce}`;
 
 export function check(p) {
   const rock = Number(p?.rock), nonce = Number(p?.nonce), seed = String(p?.seed ?? '');
-  if (!Number.isInteger(rock) || rock < 0 || rock > 4) return { ok: false, why: 'rock must be 0–4' };
+  if (!Number.isInteger(rock) || rock < 0 || rock > 9) return { ok: false, why: 'rock must be 0–9' };
   if (!/^[a-z0-9_:-]{4,48}$/i.test(seed)) return { ok: false, why: 'seed must be 4–48 letters, digits, : _ -' };
   if (!Number.isSafeInteger(nonce) || nonce < 0) return { ok: false, why: 'nonce must be a whole number' };
   const msg = message(rock, seed, nonce), hash = createHash('sha256').update(msg).digest('hex'), bits = zeroBits(hash), g = grade(bits);

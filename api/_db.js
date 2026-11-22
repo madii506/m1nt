@@ -28,6 +28,7 @@ export async function db() {
     await Q(`create index if not exists m1nt_feed_t on m1nt_feed (t desc)`);
     await Q(`alter table m1nt_presence add column if not exists emote text`);
     await Q(`alter table m1nt_presence add column if not exists et timestamptz`);
+    await Q(`alter table m1nt_presence add column if not exists shirt int`);
     return Q;
   })().catch(e => { ready = null; throw e; });
   return ready;
