@@ -231,8 +231,8 @@ async function ensureRecord(spr, client, signer, keypair, submit) {
 
 // whether a holder can receive the drop: a published private-wallet record for that address
 let REG = null;
-export async function hasPrivateWallet(owner) {   // a read only, so a public RPC does until RPC_URL is set
-  const url = /^https:\/\//.test(process.env.RPC_URL || '') ? process.env.RPC_URL : 'https://solana-rpc.publicnode.com';
+export async function hasPrivateWallet(owner) {   // the registry is read through Helius's /v1/spr gateway, so this needs the Helius RPC
+  const url = process.env.RPC_URL || ''; if (!/^https:\/\/([\w-]+\.)*helius-rpc\.com([/?]|$)/.test(url)) throw new Error('RPC_URL is not a Helius RPC yet');
   if (!REG) REG = (async () => {
     const spr = await import('@heliuslabs/spr'), { SignedTeePolicy } = await import('@heliuslabs/spr/client'), kit = await import('@solana/kit');
     const client = await spr.createSprClient({ solanaRpcUrl: url, proverTee: SignedTeePolicy.forNetwork('mainnet') });
