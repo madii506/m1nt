@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/img/fav-32.png">
 <link rel="apple-touch-icon" href="/assets/img/fav-180.png">
 <link rel="stylesheet" href="/assets/css/m1nt.css?v=1">
-<link rel="stylesheet" href="/assets/css/mine.css?v=1">
+<link rel="stylesheet" href="/assets/css/mine.css?v=2">
 <script>document.documentElement.classList.add('js');window.CONFIG={ca:'',x:'',buy:'https://pump.fun/coin/',chart:'https://dexscreener.com/solana/'}</script>
 </head>
 <body>
@@ -37,11 +37,15 @@
   <section class="view" id="view" aria-label="The mine">
     <canvas id="game" class="px" width="320" height="200"></canvas>
     <div class="hover" id="hoverText" aria-hidden="true"></div>
+    <div class="xpt" id="xpTrack" aria-hidden="true"></div>
+    <div class="vein" id="veinBar" hidden></div>
     <div class="drops" id="xpDrops" aria-hidden="true"></div>
     <div class="menu" id="menu" hidden><b>Choose option</b><div id="menuItems"></div></div>
     <div class="lvl" id="lvlUp" hidden></div>
     <div class="swing" id="swingBar" aria-hidden="true"><i></i></div>
   </section>
+
+  <nav class="acts" id="acts" aria-label="Actions"></nav>
 
   <aside class="side">
     <div class="orbs">
@@ -55,29 +59,42 @@
     </div>
     <nav class="tabs" id="tabs" role="tablist">
       <button role="tab" data-tab="inv" aria-selected="true">Pack</button>
-      <button role="tab" data-tab="skill">Skill</button>
-      <button role="tab" data-tab="wallet">Wallet</button>
-      <button role="tab" data-tab="swap">Swap</button>
-      <button role="tab" data-tab="drop">Drop</button>
-      <button role="tab" data-tab="holders">Holders</button>
-      <button role="tab" data-tab="net">Chain</button>
-      <button role="tab" data-tab="board">Board</button>
-      <button role="tab" data-tab="opts">Options</button>
+      <button role="tab" data-tab="skill" aria-selected="false">Skill</button>
+      <button role="tab" data-tab="quests" aria-selected="false">Quests</button>
+      <button role="tab" data-tab="log" aria-selected="false">Log</button>
+      <button role="tab" data-tab="smith" aria-selected="false">Smithy</button>
+      <button role="tab" data-tab="wallet" aria-selected="false">Wallet</button>
+      <button role="tab" data-tab="swap" aria-selected="false">Swap</button>
+      <button role="tab" data-tab="chart" aria-selected="false">Chart</button>
+      <button role="tab" data-tab="drop" aria-selected="false">Drop</button>
+      <button role="tab" data-tab="holders" aria-selected="false">Holders</button>
+      <button role="tab" data-tab="net" aria-selected="false">Chain</button>
+      <button role="tab" data-tab="board" aria-selected="false">Board</button>
+      <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
+      <button role="tab" data-tab="opts" aria-selected="false">Options</button>
+      <button role="tab" data-tab="help" aria-selected="false">Help</button>
     </nav>
     <div class="panel" id="panel" role="tabpanel"></div>
   </aside>
 
   <section class="chat" aria-label="Messages and command line">
-    <div class="log" id="log" aria-live="polite"></div>
+    <div class="chtabs" id="chTabs" role="tablist"><button data-f="all" aria-selected="true" type="button">All</button><button data-f="game" type="button">Game</button><button data-f="chain" type="button">Chain</button><button data-f="wallet" type="button">Wallet</button><button data-f="board" type="button">Board</button><button id="logClear" class="clr" type="button">Clear</button></div>
+    <div class="log" id="log" data-f="all" aria-live="polite"></div>
     <form class="cmd" id="cmdForm" autocomplete="off">
       <label for="cmd">M1NT&gt;</label><input id="cmd" spellcheck="false" placeholder="type help" maxlength="140"><button class="btn sm" type="submit">Run</button>
     </form>
   </section>
 </main>
 
+<div class="modal pal" id="palette" hidden>
+  <div class="sheet"><input id="palInput" placeholder="Type an action, a tab or a command…" autocomplete="off" spellcheck="false" aria-label="Search actions"><div id="palList" role="listbox"></div><p class="hint">↑ ↓ to move · Enter to run · Esc to close</p></div>
+</div>
+<div class="modal" id="cardModal" hidden>
+  <div class="sheet wide"><h3>Your miner card</h3><canvas id="cardCv" width="1200" height="630"></canvas><div class="row3"><button class="btn sm" id="cardDl" type="button">Download PNG</button><a class="btn sm pur" id="cardX" href="#" target="_blank" rel="noopener">Post on X</a><button class="btn sm ghost" type="button" data-close>Close</button></div></div>
+</div>
 <div class="modal" id="walletModal" hidden>
   <div class="sheet"><h3>Connect a wallet</h3><div id="walletList"></div><button class="btn sm ghost" type="button" data-close>Close</button></div>
 </div>
-<script type="module" src="/assets/js/mine.js?v=1"></script>
+<script type="module" src="/assets/js/mine.js?v=2"></script>
 </body>
 </html>
