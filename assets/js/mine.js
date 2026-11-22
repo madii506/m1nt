@@ -4,10 +4,11 @@ import { $, $$, api, pollState, onState, getState, num, int, usd, compact, pct, 
 const CFG = window.CONFIG || {}, ROOT = document.documentElement;
 const caNow = () => CFG.ca || getState()?.config?.ca || '', xNow = () => CFG.x || getState()?.config?.x || '';
 const TOUCH = matchMedia('(pointer:coarse)').matches;
+const { ICONS } = await import('./icons.js?v=1').catch(() => ({ ICONS: {} }));
 const rnd = (a, b) => a + Math.random() * (b - a), irnd = (a, b) => Math.floor(rnd(a, b + 1));
 
 const WANT3D = (() => { try { return (JSON.parse(localStorage.getItem('m1nt:save') || '{}').view || '3d') === '3d'; } catch { return true; } })();
-const world3d = WANT3D ? import('./world3d.js?v=1').catch(() => null) : null;   // the 3D mine loads while the pixel art does
+const world3d = WANT3D ? import('./world3d.js?v=2').catch(() => null) : null;   // the 3D mine loads while the pixel art does
 const [ART, caveImg, rocksImg, minerImg, iconsImg] = await Promise.all([fetch('/assets/data/art.json').then(r => r.json()), loadImg('/assets/img/cave.png'), loadImg('/assets/img/rocks.png'), loadImg('/assets/img/miner.png'), loadImg('/assets/img/icons.png')]);
 
 // ---------------- the rules of the mine (the server re-checks the grades)
@@ -258,21 +259,24 @@ function drawMatrix(dt) {
 function burst(r, n = 6, col) { if (W3) return W3.burst(r.i, col, n); const f = r.full; for (let i = 0; i < n; i++) sparks.push({ x: f.ox + rnd(4, f.w - 4), y: f.oy + rnd(2, f.h * .6), t: -rnd(0, .3), c: col }); }
 let lastT = 0, acc = 0;
 const W3S = { active: null, busy: false, empty: [], vein: -1, rush: false, hover: -1, fx: true, pet: false, bankOpen: false };
-let mxOn = false, tagT = 0, mmT = 0;
+let mxOn = false, tagT = 0, mmT = 0, nearT = 0, nearId = null;
 function frame3(dt) {   // one 3D frame: the world, the matrix over it, the name tags and the map
   W3S.active = active; W3S.busy = busy; rocks.forEach((r, i) => { W3S.empty[i] = !!r.respawn; }); W3S.vein = vein ? vein.rock : -1; W3S.rush = !!LIVE?.rush?.active;
   W3S.hover = hoverRock ? hoverRock.i : -1; W3S.fx = S.fx; W3S.pet = !!S.pet; W3S.bankOpen = performance.now() < bankOpenUntil;
+  W3S.move = held.size ? { f: (held.has('w') ? 1 : 0) - (held.has('s') ? 1 : 0), r: (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0) } : null;
   W3.frame(dt, W3S);
+  if ((nearT += dt) > .2) { nearT = 0; const id = W3.nearPlace(); if (id !== nearId) { nearId = id; const p = $('#prompt'); p.hidden = !id; if (id) p.innerHTML = `<kbd>E</kbd>Use the ${PLACES[id]}`; acts(); } }
   const on = performance.now() < matrixUntil; if (on || mxOn) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); if (on) { g.setTransform(1, 0, 0, 1, X0, 0); drawMatrix(dt); } } mxOn = on;
   if ((tagT += dt) > .05) { tagT = 0; placeTags(); }
   if ((mmT += dt) > .25) { mmT = 0; minimap(); }
 }
-(function loop(t) {
+function loop(t) {   // started on the next frame, so every binding below exists by the time it runs
   requestAnimationFrame(loop); const dt = Math.min(.1, (t - (lastT || t)) / 1000); lastT = t; if (document.hidden) return;
   refill(); swingTick();
   if (W3) return frame3(dt);
   acc += dt; if (acc < 1 / 30) return; draw(t, acc); acc = 0;
-})(0);
+}
+requestAnimationFrame(loop);
 
 // ---------------- clicking the mine: left click mines, right click lists the options, the cursor names what is under it
 const toCanvas = e => { const r = cv.getBoundingClientRect(), k = Math.max(r.width / cv.width, r.height / cv.height), ox = (r.width - cv.width * k) / 2, oy = (r.height - cv.height * k) / 2; return [(e.clientX - r.left - ox) / k - X0, (e.clientY - r.top - oy) / k]; };   // object-fit: cover, scene offset X0
@@ -309,6 +313,8 @@ function usePlace(id) {   // walk to the bank chest, the smithy, the board or th
     else { S.flags.core = 1; save(); examinePlace('core'); }
   });
 }
+function useNear() { if (!W3) return gm('Places are in the 3D mine. Type "view 3d" to go there.', 'd'); if (nearId) usePlace(nearId); else gm('Walk up to the bank chest, the smithy, the board or the core, then press E.', 'd'); }
+$('#prompt').onclick = () => useNear();
 function examinePlace(id) {
   gm({ bank: 'A chest bound in gold. Ore you put in here is safe, and the smithy spends from it.', smith: 'A stone furnace and an anvil. Better picks swing more hashes; more hands swing at once.', board: 'Notes pinned to a board: the miners with the most XP, every find re-checked by the server.', core: 'The hSOL core, the seam every crystal comes from. A hash with 28 zero bits is a core find: about one in 268 million.' }[id], id === 'core' ? 'p' : 'y');
 }
@@ -396,7 +402,7 @@ function addXp(n, gr) {
 function xpDrop(n, gr) {
   if (reduced) return; const s = document.createElement('span'); s.innerHTML = `<i class="${icoCls(gr.id)}" style="background-position:-${gr.icon * 25.5}px 0"></i>+${int(n)}`; $('#xpDrops').append(s); setTimeout(() => s.remove(), 1700);
 }
-function flash(id) { const v = $('#view'); v.classList.remove('flash-t', 'flash-p', 'flash-g'); void v.offsetWidth; v.classList.add(id === 'gem' ? 'flash-t' : id === 'crystal' ? 'flash-p' : 'flash-g'); }
+function flash(id) { if (reduced) return; const f = document.createElement('div'); f.className = 'vflash'; f.style.background = id === 'gem' ? 'rgba(25,240,160,.22)' : id === 'crystal' ? 'rgba(155,77,255,.26)' : 'rgba(255,210,90,.28)'; document.body.append(f); setTimeout(() => f.remove(), 1100); }
 
 // ---------------- rich veins: every few minutes one rock glitters for 45 seconds and pays double loot
 function veinTick() {
@@ -421,8 +427,8 @@ function msg(text, cls = '', html = false, ch) {
 const gm = (t, c = '') => msg(t, c, false, 'game');
 $$('#chTabs [data-f]').forEach(b => b.onclick = () => { log.dataset.f = b.dataset.f; $$('#chTabs [data-f]').forEach(x => x.setAttribute('aria-selected', String(x === b))); log.scrollTop = log.scrollHeight; });
 $('#logClear').onclick = () => { log.innerHTML = ''; };
-function bigTerm(on) { S.big = on === undefined ? !S.big : !!on; $('.client').classList.toggle('big', S.big); save(); acts(); setTimeout(() => { log.scrollTop = log.scrollHeight; }, 60); }
-$('.client').classList.toggle('big', !!S.big);
+function bigTerm(on) { S.big = on === undefined ? !S.big : !!on; $('#chat').classList.toggle('big', S.big); $('#termSize').textContent = S.big ? 'Shrink' : 'Expand'; save(); setTimeout(() => { log.scrollTop = log.scrollHeight; }, 60); }
+$('#chat').classList.toggle('big', !!S.big);
 $('#termSize').onclick = () => bigTerm();
 const QUICK = ['help', 'commands', 'neofetch', 'stats', 'xp', 'odds', 'top', 'bench', 'daily', 'live', 'best', 'verify best', 'rocks', 'ls', 'price', 'hsol', 'apy', 'epoch', 'tps', 'drop', 'plan', 'holders', 'board', 'submit', 'export', 'ping', 'matrix', 'docs', 'clear'];
 $('#qcmd').innerHTML = QUICK.map(c => `<button type="button" data-q="${c}">${c}</button>`).join('');
@@ -435,6 +441,9 @@ $('#cmd').addEventListener('keydown', e => {
   if (e.key === 'ArrowDown') { hi = Math.min(hist.length, hi + 1); $('#cmd').value = hist[hi] || ''; e.preventDefault(); }
   if (e.key === 'Tab') { e.preventDefault(); const v = $('#cmd').value.toLowerCase(), m = Object.keys(CMDS).filter(k => k.startsWith(v)); if (m.length === 1) $('#cmd').value = m[0] + ' '; else if (m.length) msg(m.join('  '), 'd', false, 'sys'); }
 });
+const held = new Set();   // the walking keys being held down
+addEventListener('keyup', e => held.delete(e.key.toLowerCase()));
+addEventListener('blur', () => held.clear());
 addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); return palette(); }
   if (e.target.closest('input,textarea,select')) { if (e.key === 'Escape') { e.target.blur(); closeModals(); } return; }
@@ -442,7 +451,8 @@ addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === 'escape') { closeMenu(); closeModals(); return; }
   if (!$$('.modal').every(m => m.hidden)) return;
-  if (k === '/') { e.preventDefault(); $('#cmd').focus(); }
+  if (k === '/' || k === 'enter') { e.preventDefault(); $('#cmd').focus(); }
+  else if (W3 && 'wasd'.includes(k) && k.length === 1) { e.preventDefault(); if (!held.size && active !== null) { stopMining(); } held.add(k); }
   else if (/^[0-9]$/.test(k)) { const i = (+k || 10) - 1; if (i < rocks.length) mine(i); }
   else if (W3 && k.startsWith('arrow')) { e.preventDefault(); if (k === 'arrowleft') W3.turn(.35); else if (k === 'arrowright') W3.turn(-.35); else W3.zoom(k === 'arrowup' ? .88 : 1.14); }
   else if (ACTIONS[k]) { e.preventDefault(); ACTIONS[k][1](); }
@@ -767,19 +777,25 @@ function checkQuests() {
 
 // ---------------- the side panel: fifteen tabs
 let current = 'inv';
-$$('#tabs button').forEach(b => b.addEventListener('click', () => tab(b.dataset.tab)));
+$$('#tabs button').forEach(b => { const t = b.dataset.tab, name = b.textContent.trim(); if (ICONS[t]) { b.title = name; b.setAttribute('aria-label', b.title); b.innerHTML = ICONS[t] + `<span class="tl">${name}</span>`; b.classList.add('ic'); } b.addEventListener('click', () => tab(t)); });
+const PHONE = matchMedia('(max-width:980px)');
+function fold(min) { $('#side').classList.toggle('min', min); $('#sideMin').textContent = min ? '+' : '–'; if (!PHONE.matches) { S.sideMin = min; save(); } }
+$('#sideMin').onclick = () => fold(!$('#side').classList.contains('min'));
+fold(PHONE.matches ? true : !!S.sideMin);
+$('#plInfo').onclick = () => tab('skill');
 function tab(t) {
-  if (!PANES[t]) return; current = t; $$('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t))); paint();
+  if (!PANES[t]) return;
+  if (PHONE.matches && current === t && !$('#side').classList.contains('min')) return fold(true);   // a second tap folds the sheet away
+  current = t; $$('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t))); $('#sideTitle').textContent = TABS[t]; if ($('#side').classList.contains('min')) fold(false); paint();
   if (t === 'drop') loadDrop(); if (t === 'holders') loadHolders(); if (t === 'board') loadBoard(); if (t === 'wallet' && session.address) refreshWallet();
-  if (TOUCH && innerWidth < 980) $('#panel').scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
 }
 const kv = (k, v, c = '') => `<div class="kv"><span>${k}</span><b class="${c}">${v}</b></div>`;
 const offline = (t, why) => `<div class="off"><b>${t}</b>${why}</div>`;
 const ico = (id, size = 'm') => `<i class="ico ${size}${icoCls(id)}" style="--i:${G(id).icon}"></i>`;
 const pickIco = (tint, size = 'm') => `<i class="ico ${size} pk ${tint}" style="--i:5"></i>`;
-const cache = { drop: null, ledger: null, holders: null, board: null, wallet: null, quote: null };
+const cache = { drop: null, ledger: null, holders: null, board: null, wallet: null, quote: null, engine: null, pw: null };
 const xpHour = () => { const ms = sess.mined; return ms > 60000 ? (S.xp - sess.xp0) / (ms / 3600e3) : 0; };
-function paint(only) { if (only && !only.includes(current)) return; const P = $('#panel'); P.innerHTML = ''; PANES[current](P, getState(), level(S.xp)); }
+function paint(only) { if (only && !only.includes(current)) return; const P = $('#panel'); P.innerHTML = ''; PANES[current](P, getState(), level(S.xp)); const h = P.querySelector(':scope > h4:first-child'); $('#sideTitle').innerHTML = esc(TABS[current]) + (h?.querySelector('small') ? `<small>${h.querySelector('small').innerHTML}</small>` : ''); }
 const PANES = {
   inv(P) {
     const slots = Array.from({ length: PACK }, (_, i) => { const p = S.inv[i]; return p ? `<div class="slot has${i === S.inv.length - 1 && p.t > Date.now() - 1500 ? ' new' : ''}" data-i="${i}" title="${G(p.g).name} · ${p.b} zero bits">${ico(p.g, 'l')}</div>` : '<div class="slot"></div>'; }).join('');
@@ -853,9 +869,10 @@ const PANES = {
     P.innerHTML = `<h4>Wallet <small>${esc(session.wallet?.name || '')}</small></h4>${kv('Address', `<a href="${solscan('account', session.address)}" target="_blank" rel="noopener">${short(session.address)}</a>`)}
       ${kv('SOL', w ? num(w.sol, 4) : dash)}${kv('hSOL', w ? num(w.hsol, 6) : dash, 't')}${kv('$M1NT', w ? (w.m1nt === null ? 'no token yet' : int(w.m1nt)) : dash, 'g')}${kv('Share of supply', w?.share ? pct(w.share, 4) : dash)}
       ${kv('Next drop, est.', w?.drop != null ? num(w.drop, 6) + ' hSOL' : dash, 'p')}${kv('Worth in SOL', w ? num(w.sol + w.hsol * (getState()?.hsol?.rate || 0), 4) : dash)}
+      ${kv('Private wallet', cache.pw?.addr !== session.address || cache.pw.has === undefined ? 'checking…' : cache.pw.has === true ? 'set up · the drop reaches you' : cache.pw.has === false ? 'not set up yet' : 'could not check', cache.pw?.has === true ? 't' : cache.pw?.has === false ? 'p' : '')}
       <p class="sec">The drop arrives encrypted, so it needs a <a href="https://helius.dev/privacy" target="_blank" rel="noopener">Privacy Rings</a> private wallet for this address. Without one, your share goes to the holders who have one that hour.</p>
       <div class="row2"><button class="btn sm" id="wCopy" type="button">Copy</button><button class="btn sm ghost" id="wOff" type="button">Disconnect</button></div><button class="btn sm ghost" id="wRef" type="button">Refresh</button>`;
-    $('#wCopy').onclick = () => copy(session.address, 'Address copied'); $('#wOff').onclick = () => CMDS.disconnect(); $('#wRef').onclick = () => refreshWallet(true);
+    checkPrivate(); $('#wCopy').onclick = () => copy(session.address, 'Address copied'); $('#wOff').onclick = () => CMDS.disconnect(); $('#wRef').onclick = () => refreshWallet(true);
   },
   swap(P) {
     const q = cache.quote, outs = [['hsol', 'hSOL']].concat(caNow() ? [['m1nt', '$M1NT']] : []);
@@ -878,6 +895,7 @@ const PANES = {
     const d = cache.drop, live = !!s?.nextDrop;
     P.innerHTML = `<h4>The drop <small>${live ? 'every hour' : 'off until launch'}</small></h4>${kv('Next drop', live ? `<span id="dropT">${clock(s.nextDrop - Date.now())}</span>` : 'at launch', 'p')}
       ${d === null ? '<p>Reading the vaults…</p>' : d.live ? `${kv('In the vaults', num(d.pendingSol, 4) + ' SOL')}${kv('As hSOL', num(d.hsolOut, 4) + ' hSOL', 't')}${kv('Wallets shown', d.shown)}<ul class="list sec">${d.rows.slice(0, 12).map((r, i) => `<li class="${r.owner === session.address ? 'me' : ''}"><span class="rk">${i + 1}</span><span class="a">${short(r.owner)} · ${pct(r.pct, 2)}</span><b>${num(r.hsol, 5)}</b></li>`).join('')}</ul>` : offline('No drop plan yet', esc(cap(d.why)) + '. Once the coin and the engine are live, the next hour\'s split shows here, read straight from the chain.')}
+      ${engineSec()}
       <div class="sec"><h4>Past drops</h4>${cache.ledger === null ? '<p>Reading the engine wallet…</p>' : cache.ledger?.live ? `<ul class="list">${cache.ledger.rows.slice(0, 10).map(r => `<li><span class="rk">${r.err ? '✗' : '✓'}</span><span class="a"><a href="${solscan('tx', r.sig)}" target="_blank" rel="noopener">${short(r.sig)}</a></span><b>${r.time ? new Date(r.time * 1000).toISOString().slice(11, 16) : ''}</b></li>`).join('')}</ul>` : offline('No payouts yet', 'The first drop happens in the hour after launch. Every one will be listed here with its transaction.')}</div>`;
   },
   holders(P) {
@@ -925,13 +943,32 @@ const PANES = {
   help(P) {
     P.innerHTML = `<h4>How the mine works</h4><p>Every swing hashes <code>m1nt|rock|seed|nonce</code> with SHA-256, once per nonce, in workers inside your browser. The hash with the most leading zero bits decides what you find.</p>
       <ul class="grades">${GRADES.map(g2 => `<li>${ico(g2.id)}<b>${g2.name}</b><span>${g2.bits}+ zero bits · ${int(g2.xp)} XP · about 1 in ${compact(2 ** g2.bits).replace('.00', '')} hashes</span></li>`).join('')}</ul>
-      <div class="sec"><h4>Keys</h4>${Object.entries(ACTIONS).map(([k, [l]]) => kv(`<kbd>${k === '?' ? '?' : k.toUpperCase()}</kbd>`, l)).join('')}${rocks.length > 5 ? kv('<kbd>1</kbd>–<kbd>0</kbd>', 'mine rock 1 to 10') + kv('<kbd>←</kbd> <kbd>→</kbd> · drag', 'turn the camera') + kv('<kbd>↑</kbd> <kbd>↓</kbd> · wheel', 'zoom') + kv('click the floor', 'walk there') : kv('<kbd>1</kbd>–<kbd>5</kbd>', 'mine that rock')}${kv('<kbd>/</kbd>', 'command line')}${kv('<kbd>Ctrl</kbd> <kbd>K</kbd>', 'every action')}${kv('right click', 'options')}</div>
+      <div class="sec"><h4>Keys</h4>${Object.entries(ACTIONS).map(([k, [l]]) => kv(`<kbd>${k === '?' ? '?' : k.toUpperCase()}</kbd>`, l)).join('')}${rocks.length > 5 ? kv('<kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>', 'walk') + kv('<kbd>E</kbd>', 'use the place you stand at') + kv('<kbd>1</kbd>–<kbd>0</kbd>', 'mine rock 1 to 10') + kv('<kbd>←</kbd> <kbd>→</kbd> · drag', 'turn the camera') + kv('<kbd>↑</kbd> <kbd>↓</kbd> · wheel', 'zoom') + kv('click the floor', 'walk there') : kv('<kbd>1</kbd>–<kbd>5</kbd>', 'mine that rock')}${kv('<kbd>Enter</kbd>', 'type in the chat')}${kv('<kbd>/</kbd>', 'command line')}${kv('<kbd>Ctrl</kbd> <kbd>K</kbd>', 'every action')}${kv('right click', 'options')}</div>
       <p class="sec">Finds earn XP, upgrades and a place on the board. They are not tokens. Holding $M1NT is what earns the hourly hSOL drop.</p>
       <a class="btn sm" href="/docs" target="_blank" rel="noopener">Open the full docs</a><button class="btn sm ghost" id="hCmds" type="button">List every command</button>`;
     $('#hCmds').onclick = () => runLine('commands');
   },
 };
-async function loadDrop() { try { [cache.drop, cache.ledger] = await Promise.all([api('plan'), api('ledger')]); } catch (e) { cache.drop = { live: false, why: 'the chain could not be read' }; cache.ledger = { live: false }; } paint(['drop']); }
+async function loadDrop() {
+  const [p, l, e] = await Promise.allSettled([api('plan'), api('ledger'), api('engine')]);
+  cache.drop = p.status === 'fulfilled' ? p.value : { live: false, why: 'the chain could not be read' }; cache.ledger = l.status === 'fulfilled' ? l.value : { live: false }; cache.engine = e.status === 'fulfilled' ? e.value : null;
+  paint(['drop']);
+}
+// the engine's own account of itself: is it on, and what did the last hours do (totals only; each payment is private)
+function engineSec() {
+  const e = cache.engine; if (!e) return '';
+  const runs = e.runs || [], last = runs[0], when = t => t ? new Date(t).toISOString().slice(11, 16) + ' UTC' : '';
+  const state = !e.engine ? 'not set up yet' : e.live ? 'live, every hour' : 'dry runs (nothing is sent)';
+  return `<div class="sec"><h4>The engine <small>${esc(state)}</small></h4>${last ? kv('Last run', `${when(last.at)} · ${esc(last.status)}`, last.status === 'done' ? 't' : last.status === 'error' ? 'p' : '') + kv('Claimed', num(last.claimedSol, 4) + ' SOL') + kv('Shielded', num(last.shieldedHsol, 4) + ' hSOL', 't') + kv('Sent privately', `${num(last.sentHsol, 4)} hSOL to ${int(last.recipients)}`, 'p') + kv('Holders with a private wallet', `${int(last.eligible)} of ${int(last.holders)}`)
+    + `<ul class="list">${runs.slice(0, 8).map(r => `<li><span class="rk">${r.status === 'done' ? '✓' : r.status === 'error' ? '✗' : '·'}</span><span class="a">${when(r.at)} · ${int(r.recipients)} paid</span><b>${num(r.sentHsol, 4)}</b></li>`).join('')}</ul>`
+    : `<p>${e.engine ? 'No hourly run yet. The first one starts on the next full hour.' : 'The engine starts at launch.'}${e.lastDry ? ` Last check: ${esc(e.lastDry.status)} at ${when(e.lastDry.at)}.` : ''}</p>`}</div>`;
+}
+async function checkPrivate() {   // can this wallet receive the encrypted drop?
+  if (!session.address || cache.pw?.addr === session.address) return;
+  cache.pw = { addr: session.address, has: undefined };
+  try { const r = await api('engine', { addr: session.address }); cache.pw.has = r.privateWallet; } catch { cache.pw.has = null; }
+  paint(['wallet']);
+}
 async function loadHolders() { try { cache.holders = await api('holders'); } catch (e) { cache.holders = { live: false, why: 'the chain could not be read' }; } paint(['holders']); }
 async function loadBoard(force) { if (cache.board && !force) { paint(['board']); } try { cache.board = await api('board', cache.boardDay ? { scope: 'day' } : {}); } catch (e) { cache.board = { live: false, why: friendly(e) }; } paint(['board']); }
 
@@ -1011,30 +1048,29 @@ async function cliSwap(a, go) {
 // ---------------- the action bar, the command palette and the miner card
 const ACTIONS = {
   m: ['Mine', () => mineAny()],
-  s: ['Stop', () => { if (active !== null) { stopMining(); gm('You stop mining.', 'd'); } }],
-  a: ['Auto', () => CMDS.auto([])],
+  x: ['Stop', () => { if (active !== null) { stopMining(); gm('You stop mining.', 'd'); } }],
+  r: ['Auto', () => CMDS.auto([])],
   b: ['Bank', () => bankAll()],
   f: ['Smithy', () => tab('smith')],
+  e: ['Use', () => useNear()],
   q: ['Quests', () => tab('quests')],
   v: ['Verify', () => verify(findProof('best'))],
   u: ['Submit', () => submitFinds()],
-  w: ['Wallet', () => session.address ? tab('wallet') : openWallets()],
+  l: ['Live', () => tab('live')],
   g: ['Swap', () => tab('swap')],
   c: ['Card', () => openCard()],
-  k: ['Palette', () => palette()],
-  l: ['Live', () => tab('live')],
-  t: ['Expand', () => bigTerm()],
-  d: ['Docs', () => window.open('/docs', '_blank', 'noopener')],
+  k: ['Menu', () => palette()],
+  t: ['Chat', () => bigTerm()],
   '?': ['Help', () => tab('help')],
 };
-const GROUPS = [['Mine', 'msa'], ['Items', 'bfq'], ['Proof', 'vuc'], ['Chain', 'lwg'], ['View', 'tkd?']];
-$('#acts').innerHTML = GROUPS.map(([label, keys]) => `<div class="grp"><span class="gl">${label}</span><div class="gb">${[...keys].map(k => `<button type="button" data-act="${k}" class="act act-${k === '?' ? 'h' : k}" title="${ACTIONS[k][0]} · key ${k === '?' ? '?' : k.toUpperCase()}">${ACTIONS[k][0]}<kbd>${k === '?' ? '?' : k.toUpperCase()}</kbd></button>`).join('')}</div></div>`).join('');
+// the hotbar under the mine: the actions you reach for while you play; the rest live on keys, tabs and the menu
+const BAR = W3 ? ['m', 'x', 'r', '|', 'b', 'f', 'e', '|', 'v', 'u', 'c', '|', 'k'] : ['m', 'x', 'r', '|', 'b', 'f', '|', 'v', 'u', 'c', '|', 'k'];
+$('#acts').innerHTML = BAR.map(k => k === '|' ? '<i class="sep"></i>' : `<button type="button" data-act="${k}" class="act act-${k === '?' ? 'h' : k}" title="${ACTIONS[k][0]} · key ${k.toUpperCase()}"><span class="gl2">${ACTIONS[k][0]}</span><kbd>${k.toUpperCase()}</kbd></button>`).join('');
 $$('#acts [data-act]').forEach(b => b.onclick = () => ACTIONS[b.dataset.act][1]());
 function acts() {
   const set = (k, on, text) => { const b = $(`#acts [data-act="${k}"]`); if (!b) return; b.classList.toggle('on', on); if (text) b.firstChild.textContent = text; };
-  set('m', active !== null, active !== null ? `Mining ${active + 1}` : 'Mine'); set('a', S.auto, `Auto ${S.auto ? 'on' : 'off'}`); set('s', false); set('t', !!S.big, S.big ? 'Shrink' : 'Expand');
-  const ts = $('#termSize'); if (ts) ts.textContent = S.big ? 'Shrink' : 'Expand';
-  const ub = $('#acts [data-act="u"]'); if (ub) { const n = S.proofs.filter(p => !S.sent[p.h]).length; ub.firstChild.textContent = n ? `Submit ${n}` : 'Submit'; }
+  set('m', active !== null, 'Mine'); set('r', S.auto, 'Auto'); set('x', false); { const eb = $('#acts [data-act="e"]'); if (eb) eb.classList.toggle('dim', !nearId); }
+  const ub = $('#acts [data-act="u"]'); if (ub) { const n = S.proofs.filter(p => !S.sent[p.h]).length; ub.firstChild.textContent = n ? 'Send' : 'Submit'; ub.dataset.n = n ? (n > 99 ? '99+' : n) : ''; }
 }
 const TABS = { inv: 'Pack', skill: 'Skill', quests: 'Quests', log: 'Collection log', smith: 'Smithy', stats: 'Stats', live: 'Live mine', wallet: 'Wallet', swap: 'Swap', chart: 'Chart', drop: 'The drop', holders: 'Holders', net: 'Chain', board: 'Miners board', opts: 'Options', help: 'Help' };
 function palItems() {
@@ -1111,6 +1147,7 @@ function orbs() {
 }
 function xpTrack() {
   const lv = level(S.xp), next = lv < 99 ? XPT[lv] : XPT[98], prev = XPT[lv - 1], k = lv < 99 ? (S.xp - prev) / (next - prev) : 1, ph = xpHour();
+  $('#plName').textContent = S.name || 'anon'; $('#plRank').textContent = rank(lv);
   $('#xpTrack').innerHTML = `<b>Lv ${lv}</b><i><u style="width:${(k * 100).toFixed(1)}%"></u></i><span>${ph ? compact(ph).replace('.00', '') + ' XP/h' : int(S.xp) + ' XP'}</span>`;
 }
 const mm = $('#minimap').getContext('2d');
@@ -1207,4 +1244,4 @@ const lv0 = level(S.xp);
 gm('Welcome to the M1NT mine.', 'g');
 gm(S.xp ? `Welcome back${S.name ? ', ' + S.name : ''}. Mining level ${lv0}, ${head().name}, ${S.inv.length} item${S.inv.length === 1 ? '' : 's'} in your pack.` : `${TOUCH ? 'Tap' : 'Click'} a rock to start mining. Every swing runs real SHA-256 proof of work in your browser.`, 'y');
 if (S.streak.n > 1) gm(`Day ${S.streak.n} in a row at the mine.`, 'g');
-msg(W3 ? (TOUCH ? 'Tap a rock to mine, tap the floor to walk, swipe sideways to look round. Type help for commands.' : 'Click a rock to mine, the floor to walk, the chest to bank. Drag to look round, scroll to zoom. Ctrl+K for every action.') : TOUCH ? 'Type help for commands. Long-press a rock for options.' : 'Press M to mine, Ctrl+K for every action, ? for help. Right click a rock for options.', 'd', false, 'sys');
+msg(W3 ? (TOUCH ? 'Tap a rock to mine, tap the floor to walk, swipe sideways to look round. Type help for commands.' : 'WASD to walk, E to use a place, click a rock to mine. Drag to look round, scroll to zoom, Enter to chat, Ctrl+K for everything.') : TOUCH ? 'Type help for commands. Long-press a rock for options.' : 'Press M to mine, Ctrl+K for every action, ? for help. Right click a rock for options.', 'd', false, 'sys');
