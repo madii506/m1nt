@@ -1,26 +1,17 @@
-// M1NT home: the loader, the living pixel world, the live strip, the hourly ring, the cipher, the calculator, the mine peek
+// M1NT home: the living pixel world, the live strip, the hourly ring, the cipher, the calculator, the mine peek
 import { $, $$, pollState, onState, getState, num, int, usd, compact, pct, clock, dash, reveals, loadImg, drawFlame, sparkle, tinyText, reduced, copy, esc, short } from './lib.js?v=1';
 
 const CFG = window.CONFIG || {}, ROOT = document.documentElement;
 const ART = await fetch('/assets/data/art.json').then(r => r.json()).catch(() => null);
 
-// ---------------- loader: two torches, the pickaxe pulsing, the client bar (no text)
-const load = $('#load'), bar = $('#load .bar i'), t0 = performance.now(); let done = false, assets = 0;
-const torches = $$('#load canvas.t'); let lf = 0;
-const flick = setInterval(() => { torches.forEach((c, i) => { const g = c.getContext('2d'); g.clearRect(0, 0, 9, 13); drawFlame(g, 0, 0, (lf + i) % 3); }); lf++; }, 130);
-for (let i = 0; i < 18; i++) { const e = document.createElement('i'); e.className = 'em'; e.style.left = (34 + Math.random() * 190) + 'px'; e.style.setProperty('--dx', (Math.random() * 44 - 22) + 'px'); e.style.animationDelay = (Math.random() * 2.4) + 's'; $('#load .stage').append(e); }
-const prog = setInterval(() => { const k = Math.min(1, (performance.now() - t0) / 1700 * .55 + assets / 4 * .45); bar.style.width = (k * 100).toFixed(1) + '%'; }, 90);
-function finish() {
-  if (done) return; done = true; clearInterval(prog); bar.style.width = '100%';
-  setTimeout(() => { load.classList.add('done'); ROOT.classList.remove('loading'); $('.hero').classList.add('on'); clearInterval(flick); setTimeout(() => load.remove(), 650); }, 240);
-}
-setTimeout(finish, 4200);                                   // backstop: never trap anyone behind the loader
+// ---------------- no loader: the hero plays the moment the page opens
+let assets = 0; $('.hero').classList.add('on');
 const ready = p => p.then(v => { assets++; return v; });
 
 // ---------------- the world: sky, drifting pixel clouds, birds, the world, a miner swinging, sparks off the ore
 const W = 384, H = 216;
 const [sky, world, minerSheet] = await Promise.all([ready(loadImg('/assets/img/hero-sky.png')), ready(loadImg('/assets/img/hero-world.png')), ready(loadImg('/assets/img/miner.png'))]).catch(() => [null, null, null]);
-assets = 4; setTimeout(finish, Math.max(0, 1500 - (performance.now() - t0)));
+assets = 4;
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 function cloudSprite(w) {                                  // the banner's cloud recipe: blobs, a lit top, a grey-blue belly
@@ -127,13 +118,8 @@ function tapeVals(s) {
   };
 }
 function paintTape() { const v = tapeVals(getState()); $$('[data-k]', run).forEach(e => { const t = v[e.dataset.k]; if (e.textContent !== t) e.textContent = t; }); }
-function paintChips(s) {
-  const live = !!s?.nextDrop, apy = s?.hsol?.apy;
-  $('#chips').innerHTML = `<span class="chip"><span class="dot${s?.hsol ? '' : ' off'}"></span>hSOL APY <b>${apy ? pct(apy, 2) : dash}</b></span>` +
-    `<span class="chip">${live ? `Next drop <b id="chipDrop">${clock(s.nextDrop - Date.now())}</b>` : 'Drops start <b>at launch</b>'}</span>`;
-}
 onState(s => {
-  paintTape(); paintChips(s);
+  paintTape();
   const r = $('#faqRate'); if (r) r.textContent = s?.hsol?.rate ? num(s.hsol.rate, 4) : dash;
   const eng = $('#engine'); if (eng) { const live = !!s?.config?.engine; eng.classList.toggle('live', live); eng.lastElementChild.textContent = live ? 'Engine live · paying hourly' : 'The engine starts at launch'; }
   calc(); paintCa(s);

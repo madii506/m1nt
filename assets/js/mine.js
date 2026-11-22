@@ -6,16 +6,7 @@ const caNow = () => CFG.ca || getState()?.config?.ca || '', xNow = () => CFG.x |
 const TOUCH = matchMedia('(pointer:coarse)').matches;
 const rnd = (a, b) => a + Math.random() * (b - a), irnd = (a, b) => Math.floor(rnd(a, b + 1));
 
-// ---------------- loader (short here: the mine is the point)
-const load = $('#load'), lbar = $('#load .bar i'), t0 = performance.now(); let lf = 0;
-const flick = setInterval(() => { $$('#load canvas.t').forEach((c, i) => { const x = c.getContext('2d'); x.clearRect(0, 0, 9, 13); drawFlame(x, 0, 0, (lf + i) % 3); }); lf++; }, 130);
-const lprog = setInterval(() => { lbar.style.width = Math.min(96, (performance.now() - t0) / 9) + '%'; }, 80);
-let opened = false;
-function openUp() { if (opened) return; opened = true; clearInterval(lprog); lbar.style.width = '100%'; setTimeout(() => { load.classList.add('done'); ROOT.classList.remove('loading'); clearInterval(flick); setTimeout(() => load.remove(), 600); }, 200); }
-setTimeout(openUp, 3500);
-
 const [ART, caveImg, rocksImg, minerImg, iconsImg] = await Promise.all([fetch('/assets/data/art.json').then(r => r.json()), loadImg('/assets/img/cave.png'), loadImg('/assets/img/rocks.png'), loadImg('/assets/img/miner.png'), loadImg('/assets/img/icons.png')]);
-setTimeout(openUp, Math.max(0, 900 - (performance.now() - t0)));
 
 // ---------------- the rules of the mine (the server re-checks the grades)
 const GRADES = [
@@ -308,6 +299,12 @@ function msg(text, cls = '', html = false, ch) {
 const gm = (t, c = '') => msg(t, c, false, 'game');
 $$('#chTabs [data-f]').forEach(b => b.onclick = () => { log.dataset.f = b.dataset.f; $$('#chTabs [data-f]').forEach(x => x.setAttribute('aria-selected', String(x === b))); log.scrollTop = log.scrollHeight; });
 $('#logClear').onclick = () => { log.innerHTML = ''; };
+function bigTerm(on) { S.big = on === undefined ? !S.big : !!on; $('.client').classList.toggle('big', S.big); save(); acts(); setTimeout(() => { log.scrollTop = log.scrollHeight; }, 60); }
+$('.client').classList.toggle('big', !!S.big);
+$('#termSize').onclick = () => bigTerm();
+const QUICK = ['help', 'commands', 'stats', 'xp', 'odds', 'best', 'verify best', 'pack', 'rocks', 'price', 'hsol', 'apy', 'epoch', 'tps', 'drop', 'plan', 'holders', 'ledger', 'board', 'submit', 'export', 'docs', 'clear'];
+$('#qcmd').innerHTML = QUICK.map(c => `<button type="button" data-q="${c}">${c}</button>`).join('');
+$$('#qcmd [data-q]').forEach(b => b.onclick = () => runLine(b.dataset.q));
 const hist = []; let hi = 0;
 $('#cmdForm').addEventListener('submit', e => { e.preventDefault(); const v = $('#cmd').value.trim(); $('#cmd').value = ''; if (!v) return; hist.push(v); hi = hist.length; runLine(v); });
 function runLine(v) { const c = v.split(/\s+/)[0].toLowerCase(); msg('> ' + v, 'd', false, CMD_CH[c] || 'sys'); run(v).catch(err => msg(String(err.message || err), 'r')); }
@@ -349,9 +346,73 @@ async function verify(p) {
   catch (e) { gm('The server check is offline right now: ' + friendly(e) + '.', 'd'); }
 }
 function examine(p) { if (!p) return; const gr = G(p.g); gm(`${gr.name}: nonce ${p.n} on rock ${p.r + 1}, ${p.b} zero bits.`, gr.cls || 'y'); gm(`hash ${p.h}`, 'd'); gm(`type "verify ${p.h.slice(0, 10)}" to recompute it`, 'd'); }
+const DOCS = {
+  help: ['help [command]', 'Lists the commands, or explains one: help swap.'],
+  commands: ['commands', 'Every command with what it does.'],
+  docs: ['docs', 'Opens the full documentation in a new tab.'],
+  big: ['big', 'Makes this terminal bigger, or back to normal.'],
+  tab: ['tab <name>', 'Opens a side tab: pack, skill, quests, log, smithy, stats, wallet, swap, chart, drop, holders, chain, board, options, help.'],
+  mine: ['mine [1-5]', 'Mines the rock you name, or the best free one (a rich vein first).'],
+  stop: ['stop', 'Stops mining.'],
+  auto: ['auto [on|off]', 'Moves to the next rock when one runs dry.'],
+  rocks: ['rocks', 'Every rock: finds left, refill timers and the rich vein.'],
+  odds: ['odds', 'Your chance of each grade per swing, from your swing size and hands.'],
+  pack: ['pack', 'What is in your 28-slot pack.'],
+  bank: ['bank', 'Deposits the whole pack into the bank.'],
+  stats: ['stats', 'Level, XP, swings, hashes, hash rate and finds.'],
+  xp: ['xp', 'XP, XP an hour this session and time to the next level.'],
+  best: ['best', 'Your best hash so far: zero bits, nonce and rock.'],
+  verify: ['verify [slot|hash|best|last]', 'Re-hashes a find in your browser, then asks the server to do the same.'],
+  examine: ['examine [slot|hash]', 'A find’s nonce, rock, zero bits and full hash.'],
+  proofs: ['proofs', 'How many finds you hold and how many are not on the board yet.'],
+  seed: ['seed', 'Your seed and nonce counter: the inputs of every hash you make.'],
+  smith: ['smith', 'Opens the smithy.'],
+  buy: ['buy pick|hands', 'Buys the next pickaxe or the next mining hand with banked ore.'],
+  smelt: ['smelt dust|ore|gem', 'The furnace: 10 dust → 1 ore, 8 ore → 1 gem, 10 gems → 1 crystal.'],
+  quests: ['quests', 'Opens the quest list and counts what is done.'],
+  log: ['log', 'Opens the collection log.'],
+  card: ['card', 'Draws your miner card to download or post.'],
+  streak: ['streak', 'Days in a row you have mined.'],
+  pet: ['pet', 'About the rock golem.'],
+  wallet: ['wallet', 'Reads your SOL, hSOL and $M1NT.'],
+  connect: ['connect', 'Connects a Solana wallet: Phantom, Solflare, Backpack or any Wallet Standard wallet.'],
+  disconnect: ['disconnect', 'Disconnects the wallet.'],
+  quote: ['quote <sol> [hsol|m1nt]', 'A Jupiter quote for SOL into hSOL or $M1NT.'],
+  swap: ['swap <sol> [hsol|m1nt]', 'Quotes, then sends the swap to your wallet to sign. M1NT never holds your funds.'],
+  price: ['price', 'SOL, hSOL and $M1NT prices.'],
+  hsol: ['hsol', 'The hSOL rate, SOL staked, supply, APY and epoch.'],
+  apy: ['apy', 'hSOL staking APY.'],
+  slot: ['slot', 'The live Solana slot and block height.'],
+  epoch: ['epoch', 'Epoch progress and slots to go.'],
+  tps: ['tps', 'Solana transactions a second.'],
+  drop: ['drop', 'Time to the next hourly drop.'],
+  plan: ['plan', 'The next drop’s split, read from the chain.'],
+  ledger: ['ledger', 'Past drops with their transactions.'],
+  holders: ['holders', 'The top holders; program accounts are marked.'],
+  name: ['name <you>', 'Sets your board name: 2–16 letters, digits, space, _ or -.'],
+  submit: ['submit', 'Sends up to 60 new finds for the server to re-hash and count.'],
+  board: ['board', 'The miners board, top 25.'],
+  ca: ['ca', 'The contract address, copied. Only after launch.'],
+  x: ['x', 'Opens the M1NT X account.'],
+  chart: ['chart', 'Opens the chart tab.'],
+  export: ['export', 'Downloads your finds as JSON; anyone can re-check each one.'],
+  clear: ['clear', 'Clears the log.'],
+  time: ['time', 'The time in UTC.'],
+  about: ['about', 'What M1NT is.'],
+  home: ['home', 'Back to the home page.'],
+  reset: ['reset yes', 'Wipes your progress in this browser.'],
+};
 const HELP = [['mine <1-5> · stop · auto on|off', 'work a rock'], ['pack · bank · stats · best · xp', 'what you found'], ['verify <slot|hash|best> · examine <slot>', 're-hash any find'], ['smith · buy pick|hands · smelt dust|ore|gem', 'upgrade at the smithy'], ['quests · log · card · streak · pet', 'your progress'], ['wallet · connect · disconnect', 'your wallet'], ['quote <sol> [hsol|m1nt] · swap <sol> [hsol|m1nt]', 'trade through Jupiter'], ['price · hsol · apy · slot · epoch · tps', 'the chain, live'], ['drop · plan · ledger · holders', 'the hourly payout'], ['name <you> · submit · board', 'the miners board'], ['ca · x · chart · home · clear · export · reset', 'the rest'], ['ctrl+k', 'every action, searchable']];
 const CMDS = {
-  help: () => HELP.forEach(([c, d]) => msg(`${c.padEnd(48)} ${d}`, 'y')),
+  help: a => { const c = (a[0] || '').toLowerCase(); if (c) { const d = DOCS[c] || DOCS[ALIAS[c]]; return d ? (msg(d[0], 'c'), msg(d[1], 'y')) : msg(`No command called "${c}". Type commands for the full list.`, 'r'); } HELP.forEach(([u, d]) => msg(`${u.padEnd(48)} ${d}`, 'y')); msg('help <command> explains one · commands lists all · docs opens the manual', 'd'); },
+  commands: () => { Object.values(DOCS).forEach(([u, d]) => msg(`${u.padEnd(32)} ${d}`, 'y')); msg(`${Object.keys(DOCS).length} commands · press Tab to complete · ↑ ↓ for history`, 'd'); },
+  docs: () => { window.open('/docs', '_blank', 'noopener'); msg('Opened the docs in a new tab.', 'd'); },
+  big: () => bigTerm(),
+  tab: a => { const w = (a[0] || '').toLowerCase(), map = { pack: 'inv', inventory: 'inv', smithy: 'smith', chain: 'net', options: 'opts', collection: 'log' }, t = map[w] || w; if (!PANES[t]) return msg('Tabs: ' + Object.values(TABS).join(', ').toLowerCase(), 'r'); tab(t); },
+  rocks: () => rocks.forEach(r => gm(`rock ${r.i + 1}: ${r.respawn ? `empty, refills in ${clock(r.respawn - Date.now())}` : `about ${r.left} finds left`}${vein?.rock === r.i ? ' · rich vein, double loot for ' + clock(vein.until - Date.now()) : ''}${active === r.i ? ' · you are here' : ''}`, r.respawn ? 'd' : vein?.rock === r.i ? 'g' : 'y')),
+  odds: () => { const n = head().swing * hands(); gm(`${int(n)} hashes a swing (${int(head().swing)} × ${hands()} hand${hands() > 1 ? 's' : ''}):`, 'y'); GRADES.forEach(g2 => { const p = 1 - Math.pow(1 - 2 ** -g2.bits, n); gm(`  ${g2.name.padEnd(14)} ${g2.bits}+ bits  ${p > .995 ? '~100%' : pct(p, p < .01 ? 3 : 1)} a swing · about one in ${p > .995 ? '1' : compact(1 / p).replace('.00', '')} swings`, g2.cls || ''); }); },
+  proofs: () => { const un = S.proofs.filter(p => !S.sent[p.h]).length; gm(`${S.proofs.length} finds kept · ${un} not on the board yet${un ? ' (type submit)' : ''}.`, 'y'); },
+  seed: () => { gm(`seed ${S.seed} · next nonce ${int(S.nonce)}`, 'y'); gm('Every hash is sha256("m1nt|<rock>|<seed>|<nonce>"). Change your name to get a new seed.', 'd'); },
   mine: a => a[0] ? mine(+a[0] - 1) : mineAny(),
   stop: () => { stopMining(); gm('You stop mining.', 'd'); },
   auto: a => { S.auto = a[0] ? a[0].toLowerCase() === 'on' : !S.auto; save(); paint(['opts', 'inv']); acts(); gm(`Auto-move to the next rock is ${S.auto ? 'on' : 'off'}.`, 'y'); },
@@ -397,10 +458,11 @@ const CMDS = {
   time: () => msg(new Date().toUTCString(), 'y'),
   about: () => { msg('M1NT: a coin with a mine attached. Its creator fees become hSOL and drop to holders every hour, encrypted.', 'y'); msg('This terminal mines with real SHA-256 proof of work. Finds earn XP, upgrades and a place on the board, not tokens.', 'y'); },
 };
-CMDS.inv = CMDS.pack; CMDS.level = CMDS.stats; CMDS.sol = CMDS.price; CMDS.net = CMDS.tps; CMDS.balance = CMDS.wallet; CMDS['?'] = CMDS.help; CMDS.upgrade = CMDS.smith; CMDS.collection = CMDS.log;
+const ALIAS = { inv: 'pack', level: 'stats', sol: 'price', net: 'tps', balance: 'wallet', '?': 'help', upgrade: 'smith', collection: 'log', cmds: 'commands', manual: 'docs' };
+CMDS.cmds = CMDS.commands; CMDS.manual = CMDS.docs; CMDS.inv = CMDS.pack; CMDS.level = CMDS.stats; CMDS.sol = CMDS.price; CMDS.net = CMDS.tps; CMDS.balance = CMDS.wallet; CMDS['?'] = CMDS.help; CMDS.upgrade = CMDS.smith; CMDS.collection = CMDS.log;
 const CMD_CH = {}; for (const k of ['price', 'sol', 'hsol', 'apy', 'slot', 'epoch', 'tps', 'net', 'drop', 'plan', 'ledger', 'holders', 'ca', 'chart', 'x']) CMD_CH[k] = 'chain';
 for (const k of ['wallet', 'balance', 'connect', 'disconnect', 'quote', 'swap']) CMD_CH[k] = 'wallet'; for (const k of ['name', 'submit', 'board']) CMD_CH[k] = 'board';
-for (const k of ['mine', 'stop', 'auto', 'pack', 'inv', 'bank', 'stats', 'level', 'xp', 'best', 'verify', 'examine', 'smith', 'buy', 'smelt', 'quests', 'log', 'card', 'streak', 'pet', 'upgrade', 'collection']) CMD_CH[k] = 'game';
+for (const k of ['mine', 'stop', 'auto', 'pack', 'inv', 'bank', 'stats', 'level', 'xp', 'best', 'verify', 'examine', 'smith', 'buy', 'smelt', 'quests', 'log', 'card', 'streak', 'pet', 'upgrade', 'collection', 'rocks', 'odds', 'proofs', 'seed']) CMD_CH[k] = 'game';
 async function run(line) {
   const [c, ...a] = line.split(/\s+/), fn = CMDS[c.toLowerCase()];
   if (!fn) return msg(`Nothing interesting happens. ("${c}" is not a command; try help)`, 'd', false, 'sys');
@@ -630,7 +692,9 @@ const PANES = {
     P.innerHTML = `<h4>How the mine works</h4><p>Every swing hashes <code>m1nt|rock|seed|nonce</code> with SHA-256, once per nonce, in workers inside your browser. The hash with the most leading zero bits decides what you find.</p>
       <ul class="grades">${GRADES.map(g2 => `<li>${ico(g2.id)}<b>${g2.name}</b><span>${g2.bits}+ zero bits · ${int(g2.xp)} XP · about 1 in ${compact(2 ** g2.bits).replace('.00', '')} hashes</span></li>`).join('')}</ul>
       <div class="sec"><h4>Keys</h4>${Object.entries(ACTIONS).map(([k, [l]]) => kv(`<kbd>${k === '?' ? '?' : k.toUpperCase()}</kbd>`, l)).join('')}${kv('<kbd>1</kbd>–<kbd>5</kbd>', 'mine that rock')}${kv('<kbd>/</kbd>', 'command line')}${kv('<kbd>Ctrl</kbd> <kbd>K</kbd>', 'every action')}${kv('right click', 'options')}</div>
-      <p class="sec">Finds earn XP, upgrades and a place on the board. They are not tokens. Holding $M1NT is what earns the hourly hSOL drop.</p>`;
+      <p class="sec">Finds earn XP, upgrades and a place on the board. They are not tokens. Holding $M1NT is what earns the hourly hSOL drop.</p>
+      <a class="btn sm" href="/docs" target="_blank" rel="noopener">Open the full docs</a><button class="btn sm ghost" id="hCmds" type="button">List every command</button>`;
+    $('#hCmds').onclick = () => runLine('commands');
   },
 };
 async function loadDrop() { try { [cache.drop, cache.ledger] = await Promise.all([api('plan'), api('ledger')]); } catch (e) { cache.drop = { live: false, why: 'the chain could not be read' }; cache.ledger = { live: false }; } paint(['drop']); }
@@ -716,17 +780,24 @@ const ACTIONS = {
   s: ['Stop', () => { if (active !== null) { stopMining(); gm('You stop mining.', 'd'); } }],
   a: ['Auto', () => CMDS.auto([])],
   b: ['Bank', () => bankAll()],
+  f: ['Smithy', () => tab('smith')],
+  q: ['Quests', () => tab('quests')],
   v: ['Verify best', () => verify(findProof('best'))],
   u: ['Submit', () => submitFinds()],
+  w: ['Wallet', () => session.address ? tab('wallet') : openWallets()],
+  g: ['Swap', () => tab('swap')],
   c: ['Card', () => openCard()],
   k: ['Commands', () => palette()],
+  t: ['Bigger terminal', () => bigTerm()],
+  d: ['Docs', () => window.open('/docs', '_blank', 'noopener')],
   '?': ['Help', () => tab('help')],
 };
 $('#acts').innerHTML = Object.entries(ACTIONS).map(([k, [l]]) => `<button type="button" data-act="${k}" class="act act-${k === '?' ? 'h' : k}">${l}<kbd>${k === '?' ? '?' : k.toUpperCase()}</kbd></button>`).join('');
 $$('#acts [data-act]').forEach(b => b.onclick = () => ACTIONS[b.dataset.act][1]());
 function acts() {
   const set = (k, on, text) => { const b = $(`#acts [data-act="${k}"]`); if (!b) return; b.classList.toggle('on', on); if (text) b.firstChild.textContent = text; };
-  set('m', active !== null, active !== null ? `Mining ${active + 1}` : 'Mine'); set('a', S.auto, `Auto ${S.auto ? 'on' : 'off'}`); set('s', false);
+  set('m', active !== null, active !== null ? `Mining ${active + 1}` : 'Mine'); set('a', S.auto, `Auto ${S.auto ? 'on' : 'off'}`); set('s', false); set('t', !!S.big, S.big ? 'Smaller terminal' : 'Bigger terminal');
+  const ts = $('#termSize'); if (ts) ts.textContent = S.big ? 'Shrink' : 'Expand';
   const ub = $('#acts [data-act="u"]'); if (ub) { const n = S.proofs.filter(p => !S.sent[p.h]).length; ub.firstChild.textContent = n ? `Submit ${n}` : 'Submit'; }
 }
 const TABS = { inv: 'Pack', skill: 'Skill', quests: 'Quests', log: 'Collection log', smith: 'Smithy', stats: 'Stats', wallet: 'Wallet', swap: 'Swap', chart: 'Chart', drop: 'The drop', holders: 'Holders', net: 'Chain', board: 'Miners board', opts: 'Options', help: 'Help' };
